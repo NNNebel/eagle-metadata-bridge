@@ -1,0 +1,10 @@
+# Deny everything by default
+*
+
+# Allow project files
+!.gitignore
+!__init__.py
+!nodes.py
+!executor.py
+!requirements.txt
+!check_metadata.py
