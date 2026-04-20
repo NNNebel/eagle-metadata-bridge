@@ -25,14 +25,18 @@ def check(path):
         print(f"❌ Failed to parse prompt JSON: {e}")
         return
 
-    marker = prompt.get("_eagle_final_node")
-    if marker:
-        print(f"✅ _eagle_final_node = {marker!r}")
-    else:
-        print("❌ _eagle_final_node not found in prompt chunk")
+    print(f"Total nodes in prompt: {len(prompt)}")
 
-    print(f"\nTotal nodes in prompt: {len([k for k in prompt if not k.startswith('_')])}")
-    print(f"Non-node keys: {[k for k in prompt if k.startswith('_')]}")
+    # eagle_bridge chunk (new protocol)
+    eb_raw = info.get("eagle_bridge")
+    if eb_raw:
+        try:
+            eb = json.loads(eb_raw)
+            print(f"\n✅ eagle_bridge = {eb}")
+        except json.JSONDecodeError:
+            print(f"\n❌ eagle_bridge chunk invalid JSON: {eb_raw!r}")
+    else:
+        print("\n❌ eagle_bridge chunk missing")
 
 
 if __name__ == "__main__":
