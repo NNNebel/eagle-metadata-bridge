@@ -71,7 +71,16 @@ def execute(images, filename_prefix, eagle_folder="",
                 pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
             img.save(abs_path, pnginfo=pnginfo, compress_level=compress_level)
         else:
-            img.save(abs_path, format="WEBP", quality=quality)
+            xmp_parts = []
+            if prompt is not None:
+                xmp_parts.append(f"prompt: {json.dumps(prompt)}")
+            if extra_pnginfo is not None:
+                for key, value in extra_pnginfo.items():
+                    xmp_parts.append(f"{key}: {json.dumps(value)}")
+            if unique_id is not None:
+                xmp_parts.append(f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}")
+            xmp = "\n".join(xmp_parts).encode("utf-8")
+            img.save(abs_path, format="WEBP", quality=quality, xmp=xmp)
 
         print(f"[EagleMetadataBridge] Saved: {abs_path}")
 
