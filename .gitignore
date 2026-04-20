@@ -8,3 +8,6 @@
 !executor.py
 !requirements.txt
 !check_metadata.py
+!CLAUDE.md
+!web/
+!web/*.js
