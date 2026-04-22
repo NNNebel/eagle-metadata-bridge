@@ -150,7 +150,18 @@ def _resolve_text_from_clip_node(prompt, node_id, visited=None):
         if isinstance(val, list) and len(val) == 2:
             return _resolve_link(prompt, str(val[0]), key, visited)
 
-    # If the node itself is a link (passthrough / router)
+    # ConditioningCombine: collect text from all conditioning inputs and join
+    conditioning_keys = [k for k, v in inputs.items()
+                         if k.startswith("conditioning") and isinstance(v, list) and len(v) == 2]
+    if conditioning_keys:
+        parts = []
+        for k in sorted(conditioning_keys):
+            result = _resolve_text_from_clip_node(prompt, str(inputs[k][0]), visited)
+            if result:
+                parts.append(result)
+        return "\n".join(parts) if parts else None
+
+    # Generic passthrough / router: follow the first resolvable link
     for key, val in inputs.items():
         if isinstance(val, list) and len(val) == 2:
             result = _resolve_text_from_clip_node(prompt, str(val[0]), visited)
@@ -160,23 +171,89 @@ def _resolve_text_from_clip_node(prompt, node_id, visited=None):
     return None
 
 
+def _bfs_distances(prompt, start_id):
+    """BFS from start_id; return {node_id: distance} for all reachable ancestors."""
+    distances = {}
+    queue = [(str(start_id), 0)]
+    while queue:
+        nid, dist = queue.pop(0)
+        if nid in distances:
+            continue
+        distances[nid] = dist
+        node = prompt.get(nid)
+        if not node:
+            continue
+        for val in (node.get("inputs") or {}).values():
+            if isinstance(val, list) and len(val) == 2:
+                parent_id = str(val[0])
+                if parent_id not in distances:
+                    queue.append((parent_id, dist + 1))
+    return distances
+
+
+def _extract_sampler_step(prompt, nid, node):
+    """Extract sampler parameters from a single sampler node. Returns dict or None."""
+    inputs = node.get("inputs") or {}
+
+    seed = _resolve_link(prompt, nid, "seed")
+    steps = _resolve_link(prompt, nid, "steps")
+    cfg = _resolve_link(prompt, nid, "cfg")
+
+    sampler_name = _resolve_link(prompt, nid, "sampler_name")
+    if sampler_name is None:
+        sampler_link = inputs.get("sampler")
+        if isinstance(sampler_link, list) and len(sampler_link) == 2:
+            sampler_name = _resolve_link(prompt, str(sampler_link[0]), "sampler_name")
+
+    scheduler = _resolve_link(prompt, nid, "scheduler")
+    if scheduler is None:
+        sched_link = inputs.get("sigmas")
+        if isinstance(sched_link, list) and len(sched_link) == 2:
+            scheduler = _resolve_link(prompt, str(sched_link[0]), "scheduler")
+
+    positive = None
+    pos_link = inputs.get("positive")
+    if isinstance(pos_link, list) and len(pos_link) == 2:
+        positive = _resolve_text_from_clip_node(prompt, str(pos_link[0]))
+
+    negative = None
+    neg_link = inputs.get("negative")
+    if isinstance(neg_link, list) and len(neg_link) == 2:
+        negative = _resolve_text_from_clip_node(prompt, str(neg_link[0]))
+
+    return {
+        "node_id": nid,
+        "node_type": node.get("class_type", "Sampler"),
+        "seed": seed,
+        "steps": steps,
+        "cfg": cfg,
+        "sampler": sampler_name,
+        "scheduler": scheduler,
+        "positive": positive,
+        "negative": negative,
+    }
+
+
 def extract_metadata(prompt, final_node_id):
     """
     Traverse the ComfyUI prompt graph from final_node_id and extract
-    generation metadata (checkpoint, LoRAs, sampler params, prompts).
+    generation metadata (checkpoint, LoRAs, all sampler steps).
 
     Returns a dict with keys:
-        checkpoint, loras, seed, steps, cfg, sampler, scheduler,
-        positive, negative
+        checkpoint, loras, generation_steps,
+        seed, steps, cfg, sampler, scheduler, positive, negative
+    generation_steps: list of dicts sorted by distance (closest = base sampler)
     """
     if not prompt or not final_node_id:
         return {}
 
-    ancestors = _get_ancestors(prompt, str(final_node_id))
+    distances = _bfs_distances(prompt, str(final_node_id))
+    ancestors = set(distances.keys())
 
     meta = {
         "checkpoint": None,
         "loras": [],
+        "generation_steps": [],
         "seed": None,
         "steps": None,
         "cfg": None,
@@ -186,7 +263,7 @@ def extract_metadata(prompt, final_node_id):
         "negative": None,
     }
 
-    sampler_found = False
+    sampler_nodes = []
 
     for nid in ancestors:
         node = prompt.get(nid)
@@ -225,51 +302,30 @@ def extract_metadata(prompt, final_node_id):
                                 meta["loras"].append(name)
 
         # ── Sampler ─────────────────────────────────────────────────────
-        # Take the first sampler found (BFS order = closest to final node)
-        if not sampler_found and _is_sampler_node(node):
-            sampler_found = True
+        if _is_sampler_node(node):
+            step = _extract_sampler_step(prompt, nid, node)
+            step["distance"] = distances.get(nid, 9999)
+            sampler_nodes.append(step)
 
-            seed = _resolve_link(prompt, nid, "seed")
-            if seed is not None:
-                meta["seed"] = seed
+    # Sort samplers by distance descending: furthest upstream = earliest in
+    # the generation chain = base sampler (index 0)
+    sampler_nodes.sort(key=lambda s: -s["distance"])
+    for i, step in enumerate(sampler_nodes):
+        step["is_base"] = (i == 0)
+        step["step_index"] = i + 1
 
-            steps = _resolve_link(prompt, nid, "steps")
-            if steps is not None:
-                meta["steps"] = steps
+    meta["generation_steps"] = sampler_nodes
 
-            cfg = _resolve_link(prompt, nid, "cfg")
-            if cfg is not None:
-                meta["cfg"] = cfg
-
-            sampler_name = _resolve_link(prompt, nid, "sampler_name")
-            if sampler_name is None:
-                # SamplerCustomAdvanced style: sampler input is a link to a provider node
-                sampler_link = inputs.get("sampler")
-                if isinstance(sampler_link, list) and len(sampler_link) == 2:
-                    sampler_name = _resolve_link(prompt, str(sampler_link[0]), "sampler_name")
-            if sampler_name:
-                meta["sampler"] = sampler_name
-
-            scheduler = _resolve_link(prompt, nid, "scheduler")
-            if scheduler is None:
-                sched_link = inputs.get("sigmas")
-                if isinstance(sched_link, list) and len(sched_link) == 2:
-                    scheduler = _resolve_link(prompt, str(sched_link[0]), "scheduler")
-            if scheduler:
-                meta["scheduler"] = scheduler
-
-            # Prompts: follow positive/negative links to CLIPTextEncode
-            pos_link = inputs.get("positive")
-            if isinstance(pos_link, list) and len(pos_link) == 2:
-                text = _resolve_text_from_clip_node(prompt, str(pos_link[0]))
-                if text:
-                    meta["positive"] = text
-
-            neg_link = inputs.get("negative")
-            if isinstance(neg_link, list) and len(neg_link) == 2:
-                text = _resolve_text_from_clip_node(prompt, str(neg_link[0]))
-                if text:
-                    meta["negative"] = text
+    # Populate top-level fields from base sampler (closest)
+    if sampler_nodes:
+        base = sampler_nodes[0]
+        meta["seed"] = base["seed"]
+        meta["steps"] = base["steps"]
+        meta["cfg"] = base["cfg"]
+        meta["sampler"] = base["sampler"]
+        meta["scheduler"] = base["scheduler"]
+        meta["positive"] = base["positive"]
+        meta["negative"] = base["negative"]
 
     return meta
 
@@ -338,37 +394,82 @@ def generate_tags(meta):
     return tags
 
 
+def _step_label(step):
+    node_type = step.get("node_type", "Sampler")
+    if step.get("is_base"):
+        return f"[Base Sampler - {node_type}]"
+    return f"[Step {step['step_index']} - {node_type}]"
+
+
 def generate_annotation(meta):
     """
-    Generate a human-readable annotation / note string from metadata.
+    Generate annotation matching comfyui-auto-tagger with all output settings enabled.
+    Format:
+      [Generation Info]
+      Checkpoint: <name without ext>
+      LoRA: <name without ext>, ...
+
+      [Base Sampler - KSampler]
+      Seed: <value>
+      Steps: <N> | CFG: <N> | Sampler: <name> | Scheduler: <name>
+      Positive: <text>
+      Negative: <text>
+
+      [Step 2 - KSampler]
+      ...
     """
-    lines = []
+    lines = ["[Generation Info]"]
 
     if meta.get("checkpoint"):
-        lines.append(f"Checkpoint: {meta['checkpoint']}")
+        lines.append(f"Checkpoint: {os.path.splitext(meta['checkpoint'])[0]}")
 
     if meta.get("loras"):
-        lines.append("LoRA: " + ", ".join(meta["loras"]))
+        lora_names = [os.path.splitext(l)[0] for l in meta["loras"]]
+        lines.append("LoRA: " + ", ".join(lora_names))
 
-    if meta.get("positive"):
-        lines.append(f"Positive: {meta['positive']}")
+    steps = meta.get("generation_steps") or []
 
-    if meta.get("negative"):
-        lines.append(f"Negative: {meta['negative']}")
-
-    params = []
-    if meta.get("seed") is not None:
-        params.append(f"Seed: {meta['seed']}")
-    if meta.get("steps") is not None:
-        params.append(f"Steps: {meta['steps']}")
-    if meta.get("cfg") is not None:
-        params.append(f"CFG: {float(meta['cfg']):.2f}")
-    if meta.get("sampler"):
-        params.append(f"Sampler: {meta['sampler']}")
-    if meta.get("scheduler"):
-        params.append(f"Scheduler: {meta['scheduler']}")
-    if params:
-        lines.append(", ".join(params))
+    if steps:
+        for step in steps:
+            lines.append("")
+            lines.append(_step_label(step))
+            if step.get("seed") is not None:
+                lines.append(f"Seed: {step['seed']}")
+            params = []
+            if step.get("steps") is not None:
+                params.append(f"Steps: {step['steps']}")
+            if step.get("cfg") is not None:
+                params.append(f"CFG: {float(step['cfg']):.2f}")
+            if step.get("sampler"):
+                params.append(f"Sampler: {step['sampler']}")
+            if step.get("scheduler"):
+                params.append(f"Scheduler: {step['scheduler']}")
+            if params:
+                lines.append(" | ".join(params))
+            if step.get("positive"):
+                lines.append(f"Positive: {step['positive']}")
+            if step.get("negative"):
+                lines.append(f"Negative: {step['negative']}")
+    else:
+        # Fallback: no generation_steps (single sampler legacy path)
+        lines.append("")
+        if meta.get("seed") is not None:
+            lines.append(f"Seed: {meta['seed']}")
+        params = []
+        if meta.get("steps") is not None:
+            params.append(f"Steps: {meta['steps']}")
+        if meta.get("cfg") is not None:
+            params.append(f"CFG: {float(meta['cfg']):.2f}")
+        if meta.get("sampler"):
+            params.append(f"Sampler: {meta['sampler']}")
+        if meta.get("scheduler"):
+            params.append(f"Scheduler: {meta['scheduler']}")
+        if params:
+            lines.append(" | ".join(params))
+        if meta.get("positive"):
+            lines.append(f"Positive: {meta['positive']}")
+        if meta.get("negative"):
+            lines.append(f"Negative: {meta['negative']}")
 
     return "\n".join(lines)
 
