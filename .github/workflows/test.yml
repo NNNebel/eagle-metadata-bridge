@@ -1,0 +1,36 @@
+name: Test
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout eagle-metadata-bridge
+        uses: actions/checkout@v4
+
+      # Check out comfyui-auto-tagger to use JS-parser expected values as
+      # the source of truth for core field comparison tests.
+      - name: Checkout comfyui-auto-tagger (JS expected source of truth)
+        uses: actions/checkout@v4
+        with:
+          repository: NNNebel/comfyui-auto-tagger
+          path: comfyui-auto-tagger
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install pytest
+        run: pip install pytest
+
+      - name: Run tests
+        env:
+          COMFYUI_AUTO_TAGGER_PATH: ${{ github.workspace }}/comfyui-auto-tagger
+        run: python -m pytest tests/ -v

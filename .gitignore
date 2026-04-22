@@ -10,3 +10,24 @@
 !check_metadata.py
 !web/
 !web/*.js
+
+# Allow CI and test infrastructure
+!.github/
+!.github/workflows/
+!.github/workflows/*.yml
+!conftest.py
+!pytest.ini
+!tests/
+!tests/pytest.ini
+!tests/conftest.py
+!tests/test_*.py
+# Sample fixtures/expected only — real bridge-*.json are excluded (contain workflows)
+!tests/fixtures/
+!tests/fixtures/sample/
+!tests/fixtures/sample/*.json
+!tests/expected/
+!tests/expected/sample/
+!tests/expected/sample/*.json
+# Local copy script
+!scripts/
+!scripts/sync_fixtures.py

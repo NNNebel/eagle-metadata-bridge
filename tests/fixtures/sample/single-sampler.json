@@ -1,0 +1,38 @@
+{
+  "prompt": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": { "ckpt_name": "example_model_v1.safetensors" }
+    },
+    "2": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "1girl, best quality" }
+    },
+    "3": {
+      "class_type": "CLIPTextEncode",
+      "inputs": { "text": "worst quality, blurry" }
+    },
+    "4": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model":    [1, 0],
+        "positive": [2, 0],
+        "negative": [3, 0],
+        "seed":     42,
+        "steps":    20,
+        "cfg":      7.0,
+        "sampler_name": "euler",
+        "scheduler":    "normal"
+      }
+    },
+    "5": {
+      "class_type": "VAEDecode",
+      "inputs": { "samples": [4, 0] }
+    },
+    "6": {
+      "class_type": "EagleMetadataBridge",
+      "inputs": { "images": [5, 0] }
+    }
+  },
+  "eagle_bridge": { "version": 1, "final_node_id": "6" }
+}
