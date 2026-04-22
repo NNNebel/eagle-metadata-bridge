@@ -8,6 +8,7 @@
 !executor.py
 !requirements.txt
 !check_metadata.py
+!node_dictionary.json
 !web/
 !web/*.js
 

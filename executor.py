@@ -41,6 +41,21 @@ def _resolve_folder_id(folder_name):
 
 
 # ---------------------------------------------------------------------------
+# Node dictionary (mirrors comfyui-auto-tagger default-dictionary.json)
+# ---------------------------------------------------------------------------
+
+def _load_node_dictionary():
+    path = os.path.join(os.path.dirname(__file__), 'node_dictionary.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f).get('nodes', {})
+    except Exception:
+        return {}
+
+_NODE_DICT = _load_node_dictionary()
+
+
+# ---------------------------------------------------------------------------
 # Graph traversal helpers
 # ---------------------------------------------------------------------------
 
@@ -139,8 +154,33 @@ def _resolve_text_from_clip_node(prompt, node_id, visited=None):
         return None
 
     inputs = node.get("inputs") or {}
+    class_type = node.get("class_type", "")
+    node_def = _NODE_DICT.get(class_type, {})
 
-    # Direct text input
+    # Provider node: extract text directly
+    if node_def.get("type") == "provider":
+        for key in ("text", "text_g", "text_l", "string"):
+            val = inputs.get(key)
+            if val is None:
+                continue
+            if isinstance(val, str):
+                return val
+            if isinstance(val, list) and len(val) == 2:
+                return _resolve_link(prompt, str(val[0]), key, visited)
+
+    # Router node: follow passthrough inputs defined in dictionary
+    if node_def.get("type") == "router":
+        passthrough = node_def.get("passthrough_rules", {}).get("output", [])
+        parts = []
+        for k in passthrough:
+            val = inputs.get(k)
+            if isinstance(val, list) and len(val) == 2:
+                result = _resolve_text_from_clip_node(prompt, str(val[0]), visited)
+                if result:
+                    parts.append(result)
+        return "\n".join(parts) if parts else None
+
+    # Unknown node: try common text keys first
     for key in ("text", "text_g", "text_l", "string"):
         val = inputs.get(key)
         if val is None:
@@ -150,18 +190,7 @@ def _resolve_text_from_clip_node(prompt, node_id, visited=None):
         if isinstance(val, list) and len(val) == 2:
             return _resolve_link(prompt, str(val[0]), key, visited)
 
-    # ConditioningCombine: collect text from all conditioning inputs and join
-    conditioning_keys = [k for k, v in inputs.items()
-                         if k.startswith("conditioning") and isinstance(v, list) and len(v) == 2]
-    if conditioning_keys:
-        parts = []
-        for k in sorted(conditioning_keys):
-            result = _resolve_text_from_clip_node(prompt, str(inputs[k][0]), visited)
-            if result:
-                parts.append(result)
-        return "\n".join(parts) if parts else None
-
-    # Generic passthrough / router: follow the first resolvable link
+    # Fallback: follow the first resolvable link
     for key, val in inputs.items():
         if isinstance(val, list) and len(val) == 2:
             result = _resolve_text_from_clip_node(prompt, str(val[0]), visited)
