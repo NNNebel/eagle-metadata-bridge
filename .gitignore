@@ -22,11 +22,13 @@
 !tests/pytest.ini
 !tests/conftest.py
 !tests/test_*.py
-# Sample fixtures/expected only — real bridge-*.json are excluded (contain workflows)
+# Fixtures: no bridge-*.json (images are in comfyui-auto-tagger)
 !tests/fixtures/
 !tests/fixtures/sample/
 !tests/fixtures/sample/*.json
+# Expected: bridge-*.json contain annotation only (no workflow data) — safe to commit
 !tests/expected/
+!tests/expected/bridge-*.json
 !tests/expected/sample/
 !tests/expected/sample/*.json
 # Local copy script

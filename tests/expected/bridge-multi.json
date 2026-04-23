@@ -1,0 +1,3 @@
+{
+  "annotation": "[Generation Info]\nCheckpoint: hassakuXLIllustrious_v33\n\n[Base Sampler - KSampler]\nSeed: 1111111\nSteps: 30 | CFG: 8.00 | Sampler: euler_ancestral | Scheduler: simple\nPositive: masterpiece, 1girl, bronze hair, portlate\nNegative: worst quality, \n\n[Step 2 - KSampler]\nSeed: 222222\nSteps: 20 | CFG: 7.00 | Sampler: euler_ancestral | Scheduler: normal\nPositive:  (ultra-detailed),\nNegative: nude,"
+}
