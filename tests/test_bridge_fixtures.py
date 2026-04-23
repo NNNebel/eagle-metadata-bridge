@@ -182,6 +182,24 @@ TEST_CASES = [
         'check_loras': [],
         'check_base_positive_contains': 'tailored jacket',
     },
+    {
+        'name': 'bridge-lora-simple',
+        'fixture_png': 'bridge-lora-simple.png',
+        'fixture_webp': 'bridge-lora-simple.webp',
+        'label': 'LoraLoader single, novaAnimeXL',
+        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
+        'check_loras': ['hime cut_XL_illustrious_V1.0.safetensors'],
+        'check_base_positive_contains': None,
+    },
+    {
+        'name': 'bridge-lora-stack',
+        'fixture_png': 'bridge-lora-stack.png',
+        'fixture_webp': 'bridge-lora-stack.webp',
+        'label': 'LoraLoaderStack rgthree, novaAnimeXL',
+        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
+        'check_loras': ['half twintail_illustrious_V1.0.safetensors'],
+        'check_base_positive_contains': None,
+    },
 ]
 
 # Expand into per-image test cases (PNG + WebP)
