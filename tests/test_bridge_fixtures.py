@@ -67,8 +67,8 @@ CAT_EXPECTED_DIR = os.path.join(_cat_path, 'tests', 'expected')
 # Image metadata extraction helpers
 # ---------------------------------------------------------------------------
 
-def _read_xmp_chunks(path):
-    """Read XMP chunk from WebP RIFF container. Returns raw bytes or None."""
+def _read_webp_metadata_chunk(path):
+    """Read EXIF or XMP chunk from WebP RIFF container. Returns raw bytes or None."""
     with open(path, 'rb') as f:
         data = f.read()
     if data[:4] != b'RIFF' or data[8:12] != b'WEBP':
@@ -77,53 +77,24 @@ def _read_xmp_chunks(path):
     while offset < len(data) - 8:
         chunk_type = data[offset:offset+4]
         chunk_size = struct.unpack_from('<I', data, offset+4)[0]
-        if chunk_type == b'XMP ':
+        if chunk_type in (b'EXIF', b'XMP '):
             return data[offset+8:offset+8+chunk_size]
         offset += 8 + chunk_size + (chunk_size % 2)
     return None
 
 def _parse_kv_metadata(text):
-    """Parse 'key: {json}\\nkey2: {json}' format used in WebP XMP and WebP EXIF."""
+    """Parse 'key: {json}' entries from binary metadata text (EXIF or XMP)."""
+    import re
     result = {}
-    i = 0
-    while i < len(text):
-        colon = text.find(':', i)
-        if colon < 0:
-            break
-        key = text[i:colon].strip().lower()
-        rest = text[colon+1:].lstrip(' ')
-        if rest.startswith('{'):
-            # Find matching closing brace
-            depth = 0
-            end = colon + 1 + (len(text[colon+1:]) - len(rest))
-            j = end
-            in_str = False
-            esc = False
-            while j < len(text):
-                c = text[j]
-                if esc:
-                    esc = False
-                elif c == '\\' and in_str:
-                    esc = True
-                elif c == '"':
-                    in_str = not in_str
-                elif not in_str:
-                    if c == '{':
-                        depth += 1
-                    elif c == '}':
-                        depth -= 1
-                        if depth == 0:
-                            try:
-                                result[key] = json.loads(text[end:j+1])
-                            except json.JSONDecodeError:
-                                pass
-                            i = j + 1
-                            break
-                j += 1
-            else:
-                break
-        else:
-            i = colon + 1
+    decoder = json.JSONDecoder()
+    for key in ('workflow', 'prompt', 'eagle_bridge'):
+        m = re.search(key + r':\s*(\{)', text, re.IGNORECASE)
+        if m:
+            try:
+                obj, _ = decoder.raw_decode(text, m.start(1))
+                result[key] = obj
+            except json.JSONDecodeError:
+                pass
     return result
 
 def load_fixture_from_image(image_path):
@@ -148,10 +119,10 @@ def load_fixture_from_image(image_path):
         return {'prompt': prompt, 'eagle_bridge': eagle_bridge}
 
     if ext == '.webp':
-        xmp_bytes = _read_xmp_chunks(image_path)
+        xmp_bytes = _read_webp_metadata_chunk(image_path)
         if xmp_bytes is None:
             return None
-        text = xmp_bytes.decode('utf-8', errors='replace')
+        text = xmp_bytes.decode('latin-1', errors='replace')
         meta = _parse_kv_metadata(text)
         if 'prompt' not in meta or 'eagle_bridge' not in meta:
             return None
@@ -209,7 +180,7 @@ TEST_CASES = [
         'label': 'ImpactCombineConditionings in base sampler positive',
         'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
         'check_loras': [],
-        'check_base_positive_contains': 'brown hair',
+        'check_base_positive_contains': 'tailored jacket',
     },
 ]
 

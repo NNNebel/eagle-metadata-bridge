@@ -1,3 +1,3 @@
 {
-  "annotation": "[Generation Info]\nCheckpoint: boleromixIllustrious_v815\n\n[Base Sampler - KSampler]\nSeed: 1111111\nSteps: 30 | CFG: 8.00 | Sampler: dpmpp_2m | Scheduler: simple\nPositive: masterpiece, \n1girl, \nbrown hair, hime cut, summer sweater\nNegative: worst quality, \nbad quality,\nbad hands, extra limbs, "
+  "annotation": "[Generation Info]\nCheckpoint: novaAnimeXL_ilV140\n\n[Base Sampler - KSampler]\nSeed: 1111111\nSteps: 30 | CFG: 8.00 | Sampler: dpmpp_2m | Scheduler: simple\nPositive: masterpiece, \n1girl, \ntailored jacket,stick pants\nNegative: worst quality, \nbad quality,\nbad hands, extra limbs, "
 }
