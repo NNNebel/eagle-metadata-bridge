@@ -41,6 +41,41 @@ def _resolve_folder_id(folder_name):
 
 
 # ---------------------------------------------------------------------------
+# EXIF builder for WebP (matches ComfyUI default Save Image format)
+# ---------------------------------------------------------------------------
+
+def _build_webp_exif(entries):
+    """
+    Build a minimal big-endian TIFF EXIF block for WebP.
+    entries: list of (tag: int, value: str) sorted by tag ascending.
+    Matches ComfyUI's default WebP metadata format so existing readers work.
+    Tag 0x010F (Make)  → workflow
+    Tag 0x0110 (Model) → prompt
+    Tag 0x013B (Artist)→ eagle_bridge
+    """
+    import struct
+    entries = sorted(entries, key=lambda x: x[0])
+    n = len(entries)
+    # Layout: header(8) + count(2) + entries(12*n) + next_ifd(4) + string data
+    data_offset = 8 + 2 + 12 * n + 4
+    encoded = [v.encode('utf-8') + b'\x00' for _, v in entries]
+    offsets = []
+    pos = data_offset
+    for s in encoded:
+        offsets.append(pos)
+        pos += len(s)
+
+    buf = b'MM\x00\x2A\x00\x00\x00\x08'  # big-endian TIFF, IFD at offset 8
+    buf += struct.pack('>H', n)
+    for i, (tag, _) in enumerate(entries):
+        buf += struct.pack('>HHII', tag, 2, len(encoded[i]), offsets[i])
+    buf += b'\x00\x00\x00\x00'  # no next IFD
+    for s in encoded:
+        buf += s
+    return buf
+
+
+# ---------------------------------------------------------------------------
 # Node dictionary (mirrors comfyui-auto-tagger default-dictionary.json)
 # ---------------------------------------------------------------------------
 
@@ -559,16 +594,17 @@ def execute(images, filename_prefix, eagle_folder="",
                 pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
             img.save(abs_path, pnginfo=pnginfo, compress_level=compress_level)
         else:
-            xmp_parts = []
+            # Write metadata as EXIF (matches ComfyUI default Save Image format)
+            exif_entries = []
+            workflow = (extra_pnginfo or {}).get('workflow')
+            if workflow is not None:
+                exif_entries.append((0x010F, f"workflow: {json.dumps(workflow)}"))
             if prompt is not None:
-                xmp_parts.append(f"prompt: {json.dumps(prompt)}")
-            if extra_pnginfo is not None:
-                for key, value in extra_pnginfo.items():
-                    xmp_parts.append(f"{key}: {json.dumps(value)}")
+                exif_entries.append((0x0110, f"prompt: {json.dumps(prompt)}"))
             if unique_id is not None:
-                xmp_parts.append(f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}")
-            xmp = "\n".join(xmp_parts).encode("utf-8")
-            img.save(abs_path, format="WEBP", quality=quality, xmp=xmp)
+                exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
+            exif_bytes = _build_webp_exif(exif_entries) if exif_entries else None
+            img.save(abs_path, format="WEBP", quality=quality, exif=exif_bytes)
 
         print(f"[EagleMetadataBridge] Saved: {abs_path}")
 
