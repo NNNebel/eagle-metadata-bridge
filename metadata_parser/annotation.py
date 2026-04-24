@@ -7,9 +7,11 @@ import os
 
 def _step_label(step):
     node_type = step.get("node_type", "Sampler")
+    node_id   = step.get("node_id", "")
+    label = f"{node_type} (ID: {node_id})" if node_id else node_type
     if step.get("is_base"):
-        return f"[Base Sampler - {node_type}]"
-    return f"[Step {step['step_index']} - {node_type}]"
+        return f"[Base Sampler - {label}]"
+    return f"[Step {step['step_index']} - {label}]"
 
 
 def generate_annotation(meta):
@@ -18,26 +20,36 @@ def generate_annotation(meta):
     """
     lines = ["[Generation Info]"]
 
+    global_ckpt = None
     if meta.get("checkpoint"):
-        lines.append(f"Checkpoint: {os.path.splitext(meta['checkpoint'])[0]}")
+        global_ckpt = os.path.splitext(meta["checkpoint"])[0]
+        lines.append(f"Checkpoint: {global_ckpt}")
 
-    if meta.get("loras"):
+    # Always output LoRA line when loras key exists (even empty list)
+    if meta.get("loras") is not None:
         lora_names = [os.path.splitext(l)[0] for l in meta["loras"]]
         lines.append("LoRA: " + ", ".join(lora_names))
 
     steps = meta.get("generation_steps") or []
+    single_step = len(steps) == 1
 
     if steps:
-        for step in steps:
+        for i, step in enumerate(steps):
             lines.append("")
             lines.append(_step_label(step))
+
+            # Show checkpoint in step when: only one step, or step ckpt differs from global
+            step_ckpt = os.path.splitext(step["checkpoint"])[0] if step.get("checkpoint") else None
+            if step_ckpt and (single_step or step_ckpt != global_ckpt):
+                lines.append(f"Checkpoint: {step_ckpt}")
+
             if step.get("seed") is not None:
                 lines.append(f"Seed: {step['seed']}")
             params = []
             if step.get("steps") is not None:
                 params.append(f"Steps: {step['steps']}")
             if step.get("cfg") is not None:
-                params.append(f"CFG: {float(step['cfg']):.2f}")
+                params.append(f"CFG: {float(step['cfg']):.1f}")
             if step.get("sampler"):
                 params.append(f"Sampler: {step['sampler']}")
             if step.get("scheduler"):
@@ -49,7 +61,7 @@ def generate_annotation(meta):
             if step.get("negative"):
                 lines.append(f"Negative: {step['negative']}")
     else:
-        # Fallback: no generation_steps (single sampler legacy path)
+        # Fallback: no generation_steps
         lines.append("")
         if meta.get("seed") is not None:
             lines.append(f"Seed: {meta['seed']}")
@@ -57,7 +69,7 @@ def generate_annotation(meta):
         if meta.get("steps") is not None:
             params.append(f"Steps: {meta['steps']}")
         if meta.get("cfg") is not None:
-            params.append(f"CFG: {float(meta['cfg']):.2f}")
+            params.append(f"CFG: {float(meta['cfg']):.1f}")
         if meta.get("sampler"):
             params.append(f"Sampler: {meta['sampler']}")
         if meta.get("scheduler"):

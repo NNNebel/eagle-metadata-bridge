@@ -58,3 +58,4 @@
 !scripts/
 !scripts/sync_fixtures.py
 !scripts/check_metadata.py
+!scripts/generate_bridge_expected.js

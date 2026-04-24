@@ -247,6 +247,37 @@ class TestBridgeFixtures:
             assert set(meta.get('loras', [])) == set(js['loras']), \
                 f"loras: Python={meta.get('loras')!r}, JS={js['loras']!r}"
 
+    def test_generation_steps_match_js_expected(self, case):
+        """Each generation step must match comfyui-auto-tagger (JS) step data field-by-field."""
+        js = load_js_expected(case['name'])
+        if not js or 'generationSteps' not in js:
+            pytest.skip('generationSteps not in js expected')
+        meta = _get_meta(case)
+        py_steps = meta.get('generation_steps', [])
+        js_steps = js['generationSteps']
+        assert len(py_steps) == len(js_steps), \
+            f"step count: Python={len(py_steps)}, JS={len(js_steps)}"
+        # camelCase → snake_case field map (only fields Python produces)
+        field_map = [
+            ('seed',       'seed'),
+            ('steps',      'steps'),
+            ('cfg',        'cfg'),
+            ('sampler',    'sampler'),
+            ('scheduler',  'scheduler'),
+            ('positive',   'positive'),
+            ('negative',   'negative'),
+            ('isBase',     'is_base'),
+            ('stepIndex',  'step_index'),
+            ('nodeId',     'node_id'),
+            ('nodeType',   'node_type'),
+        ]
+        for i, (js_step, py_step) in enumerate(zip(js_steps, py_steps)):
+            for js_key, py_key in field_map:
+                if js_key not in js_step:
+                    continue
+                assert py_step.get(py_key) == js_step[js_key], \
+                    f"step[{i}].{py_key}: Python={py_step.get(py_key)!r}, JS={js_step[js_key]!r}"
+
     def test_annotation_format(self, case):
         annotation = generate_annotation(_get_meta(case))
         assert annotation.startswith('[Generation Info]')
@@ -258,3 +289,25 @@ class TestBridgeFixtures:
         tags = generate_tags(meta)
         ckpt_no_ext = os.path.splitext(meta.get('checkpoint', ''))[0].lower()
         assert ckpt_no_ext in tags
+
+    def test_tags_exact_match(self, case):
+        """Tags must exactly match JS expected (as a set, order-independent)."""
+        js = load_js_expected(case['name'])
+        if not js or 'tags' not in js:
+            pytest.skip('tags not in js expected — run scripts/generate_bridge_expected.js')
+        meta = _get_meta(case)
+        py_tags = set(generate_tags(meta))
+        js_tags = set(js['tags'])
+        assert py_tags == js_tags, \
+            f"tags mismatch:\n  only in Python: {py_tags - js_tags}\n  only in JS: {js_tags - py_tags}"
+
+    def test_annotation_exact_match(self, case):
+        """Annotation must exactly match JS expected."""
+        js = load_js_expected(case['name'])
+        if not js or 'annotation' not in js:
+            pytest.skip('annotation not in js expected — run scripts/generate_bridge_expected.js')
+        meta = _get_meta(case)
+        py_ann = generate_annotation(meta)
+        js_ann = js['annotation']
+        assert py_ann == js_ann, \
+            f"annotation mismatch:\nPython:\n{py_ann}\n\nJS:\n{js_ann}"

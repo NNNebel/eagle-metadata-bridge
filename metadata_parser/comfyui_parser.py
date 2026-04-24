@@ -85,6 +85,7 @@ def extract_metadata(prompt, final_node_id):
     for i, step in enumerate(sampler_nodes):
         step["is_base"] = (i == 0)
         step["step_index"] = i + 1
+        step["checkpoint"] = meta["checkpoint"]
 
     meta["generation_steps"] = sampler_nodes
 
