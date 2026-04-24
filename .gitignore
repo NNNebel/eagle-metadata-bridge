@@ -31,10 +31,6 @@
 !tests/pytest.ini
 !tests/conftest.py
 !tests/test_*.py
-# Fixtures: no bridge-*.json (images are in comfyui-auto-tagger)
-!tests/fixtures/
-!tests/fixtures/sample/
-!tests/fixtures/sample/*.json
 # Expected: bridge-*.json are committed as cross-repo contract
 !tests/expected/
 !tests/expected/bridge-*.json
