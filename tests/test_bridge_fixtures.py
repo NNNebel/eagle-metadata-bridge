@@ -41,13 +41,8 @@ def _load_executor_functions():
     cutoff = src.index('\n# ---------------------------------------------------------------------------\n# Main execute function')
     code = (
         "import os, re, json\n"
-        "from metadata_parser.graph import resolve_link as _resolve_link, "
-        "get_ancestors as _get_ancestors, bfs_distances as _bfs_distances\n"
-        "from metadata_parser.sampler_analyzer import NODE_DICT as _NODE_DICT, "
-        "is_sampler_node as _is_sampler_node, "
-        "resolve_text_from_clip_node as _resolve_text_from_clip_node, "
-        "extract_sampler_step as _extract_sampler_step\n"
-    ) + src[src.index('\ndef extract_metadata'):cutoff]
+        "from metadata_parser.comfyui_parser import extract_metadata\n"
+    ) + src[src.index('\ndef _basename_no_ext'):cutoff]
     ns = {'__file__': src_path}
     exec(compile(code, 'executor.py', 'exec'), ns)
     return ns
