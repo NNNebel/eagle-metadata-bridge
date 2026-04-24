@@ -224,127 +224,108 @@ def execute(images, filename_prefix, eagle_folder_path="",
             _expanded_local_dir = os.path.join(output_dir, _expanded_local_dir)
         print(f"[EagleMetadataBridge] local dir: {_expanded_local_dir!r}, prefix: {_expanded_prefix!r}")
 
-    import tempfile
-    temp_dir = None
-    if not use_local_path:
-        temp_dir = tempfile.mkdtemp(prefix="eagle_bridge_")
-        print(f"[EagleMetadataBridge] No local_save_path provided. Using temp directory: {temp_dir}")
+    for batch_idx, image_tensor in enumerate(images):
+        img_np = np.clip(255.0 * image_tensor.cpu().numpy(), 0, 255).astype(np.uint8)
+        img = Image.fromarray(img_np)
 
-    try:
-        for batch_idx, image_tensor in enumerate(images):
-            img_np = np.clip(255.0 * image_tensor.cpu().numpy(), 0, 255).astype(np.uint8)
-            img = Image.fromarray(img_np)
+        _file_name = f"{_expanded_prefix}_{counter + batch_idx:05d}{ext}"
 
-            _file_name = f"{_expanded_prefix}_{counter + batch_idx:05d}{ext}"
+        # 1. Determine save location for Eagle upload
+        # If use_local_path is set, save to that custom directory.
+        # Otherwise, use ComfyUI's standard full_output_folder (we will delete it later).
+        if use_local_path:
+            try:
+                os.makedirs(_expanded_local_dir, exist_ok=True)
+                abs_path = os.path.abspath(os.path.join(_expanded_local_dir, _file_name))
+            except Exception as e:
+                print(f"[EagleMetadataBridge] Failed to create local directory: {e}")
+                abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
+        else:
+            abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
 
-            # Determine save location
-            if use_local_path:
-                try:
-                    os.makedirs(_expanded_local_dir, exist_ok=True)
-                    abs_path = os.path.abspath(os.path.join(_expanded_local_dir, _file_name))
-                except Exception as e:
-                    print(f"[EagleMetadataBridge] Failed to create local directory: {e}")
-                    abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
+        file = os.path.basename(abs_path)
+
+        def _save_image(path):
+            if is_png:
+                pnginfo = PngInfo()
+                if prompt is not None:
+                    pnginfo.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None:
+                    for key, value in extra_pnginfo.items():
+                        pnginfo.add_text(key, json.dumps(value))
+                if unique_id is not None:
+                    pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
+                img.save(path, pnginfo=pnginfo, compress_level=compress_level)
+            elif is_jpeg:
+                # JPEG: EXIF APP1 with TIFF IFD (matches ComfyUI SaveImage JPEG format)
+                exif_entries = []
+                workflow = (extra_pnginfo or {}).get('workflow')
+                if workflow is not None:
+                    exif_entries.append((0x010E, f"Workflow: {json.dumps(workflow)}"))
+                if prompt is not None:
+                    exif_entries.append((0x010F, f"Prompt: {json.dumps(prompt)}"))
+                if unique_id is not None:
+                    exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
+                exif_bytes = _build_jpeg_exif(exif_entries) if exif_entries else None
+                img.save(path, format="JPEG", quality=quality, exif=exif_bytes)
             else:
-                abs_path = os.path.abspath(os.path.join(temp_dir, _file_name))
+                exif_entries = []
+                workflow = (extra_pnginfo or {}).get('workflow')
+                if workflow is not None:
+                    exif_entries.append((0x010F, f"workflow: {json.dumps(workflow)}"))
+                if prompt is not None:
+                    exif_entries.append((0x0110, f"prompt: {json.dumps(prompt)}"))
+                if unique_id is not None:
+                    exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
+                exif_bytes = _build_webp_exif(exif_entries) if exif_entries else None
+                img.save(path, format="WEBP", quality=quality, exif=exif_bytes)
 
-            file = os.path.basename(abs_path)
+        # Save primary image (for Eagle)
+        _save_image(abs_path)
+        print(f"[EagleMetadataBridge] Saved for Eagle: {abs_path}")
 
-            def _save_image(path):
-                if is_png:
-                    pnginfo = PngInfo()
-                    if prompt is not None:
-                        pnginfo.add_text("prompt", json.dumps(prompt))
-                    if extra_pnginfo is not None:
-                        for key, value in extra_pnginfo.items():
-                            pnginfo.add_text(key, json.dumps(value))
-                    if unique_id is not None:
-                        pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
-                    img.save(path, pnginfo=pnginfo, compress_level=compress_level)
-                elif is_jpeg:
-                    # JPEG: EXIF APP1 with TIFF IFD (matches ComfyUI SaveImage JPEG format)
-                    exif_entries = []
-                    workflow = (extra_pnginfo or {}).get('workflow')
-                    if workflow is not None:
-                        exif_entries.append((0x010E, f"Workflow: {json.dumps(workflow)}"))
-                    if prompt is not None:
-                        exif_entries.append((0x010F, f"Prompt: {json.dumps(prompt)}"))
-                    if unique_id is not None:
-                        exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
-                    exif_bytes = _build_jpeg_exif(exif_entries) if exif_entries else None
-                    img.save(path, format="JPEG", quality=quality, exif=exif_bytes)
-                else:
-                    exif_entries = []
-                    workflow = (extra_pnginfo or {}).get('workflow')
-                    if workflow is not None:
-                        exif_entries.append((0x010F, f"workflow: {json.dumps(workflow)}"))
-                    if prompt is not None:
-                        exif_entries.append((0x0110, f"prompt: {json.dumps(prompt)}"))
-                    if unique_id is not None:
-                        exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
-                    exif_bytes = _build_webp_exif(exif_entries) if exif_entries else None
-                    img.save(path, format="WEBP", quality=quality, exif=exif_bytes)
+        # Send to Eagle
+        payload = {
+            "path": abs_path,
+            "name": os.path.basename(abs_path),
+            "tags": merged_tags,
+            "annotation": auto_annotation,
+        }
+        if eagle_folder_path:
+            expanded_efp = _expand_path_expr(eagle_folder_path.strip(), prompt, extra_pnginfo, now)
+            if '%' not in expanded_efp:
+                folder_id = _ensure_eagle_folder_path(expanded_efp)
+                if folder_id:
+                    payload["folderId"] = folder_id
 
-            _save_image(abs_path)
-            print(f"[EagleMetadataBridge] Saved: {abs_path}")
+        try:
+            resp = requests.post(f"{EAGLE_API_BASE}/api/item/addFromPath", json=payload, timeout=10)
+            if not resp.ok:
+                print(f"[EagleMetadataBridge] Eagle API error: {resp.text}")
+        except Exception as e:
+            print(f"[EagleMetadataBridge] Eagle connection failed: {e}")
 
-            # Send to Eagle
-            payload = {
-                "path": abs_path,
-                "name": os.path.basename(abs_path),
-                "tags": merged_tags,
-                "annotation": auto_annotation,
-            }
-            if eagle_folder_path:
-                expanded_efp = _expand_path_expr(eagle_folder_path.strip(), prompt, extra_pnginfo, now)
-                if '%' in expanded_efp:
-                    print(f"[EagleMetadataBridge] eagle_folder_path has unresolved placeholders, skipping folder assignment.")
-                else:
-                    print(f"[EagleMetadataBridge] eagle_folder_path expanded: {expanded_efp!r}")
-                    folder_id = _ensure_eagle_folder_path(expanded_efp)
-                    if folder_id:
-                        payload["folderId"] = folder_id
+        # 2. Handle UI Preview (Following ComfyUI standard: use temp folder)
+        if preview:
+            if use_local_path:
+                # If we saved it permanently, we can just point to it (though UI prefers output/temp)
+                # To be safe and follow convention, we use 'output' type if it's in output folder
+                preview_items.append({"filename": file, "subfolder": subfolder, "type": "output"})
+            else:
+                # Save a copy to ComfyUI's native temp directory for UI display
+                # This ensures frontend 'stat' and loading work correctly
+                comfy_temp_dir = folder_paths.get_temp_directory()
+                comfy_temp_path = os.path.join(comfy_temp_dir, _file_name)
+                img.save(comfy_temp_path)
+                preview_items.append({"filename": _file_name, "subfolder": "", "type": "temp"})
 
+        # 3. Cleanup: If NOT saving locally, delete the temporary file in output_dir
+        if not use_local_path and os.path.exists(abs_path):
             try:
-                resp = requests.post(f"{EAGLE_API_BASE}/api/item/addFromPath", json=payload, timeout=10)
-                if resp.ok:
-                    print(f"[EagleMetadataBridge] Sent to Eagle: {resp.json()}")
-                else:
-                    raise RuntimeError(
-                        f"Eagle API returned {resp.status_code}: {resp.text}\n"
-                        f"Image was saved to: {abs_path}"
-                    )
-            except requests.exceptions.ConnectionError:
-                raise RuntimeError(
-                    f"Eagle に接続できません (port {EAGLE_API_BASE})。"
-                    f" Eagle が起動しているか、config.json のポート番号を確認してください。\n"
-                    f"Image was saved to: {abs_path}"
-                )
-            except RuntimeError:
-                raise
+                os.remove(abs_path)
+                print(f"[EagleMetadataBridge] Cleaned up temporary output file: {abs_path}")
             except Exception as e:
-                raise RuntimeError(f"Eagle API failed: {e}\nImage was saved to: {abs_path}") from e
-            finally:
-                # Delete temporary file if it was created
-                if temp_dir and os.path.exists(abs_path):
-                    try:
-                        os.remove(abs_path)
-                        print(f"[EagleMetadataBridge] Deleted temp file: {abs_path}")
-                    except Exception as e:
-                        print(f"[EagleMetadataBridge] Failed to delete temp file {abs_path}: {e}")
-
-            preview_items.append({"filename": file, "subfolder": subfolder, "type": "output"})
-    finally:
-        # Clean up temporary directory
-        if temp_dir and os.path.exists(temp_dir):
-            try:
-                # Only remove if empty, or use shutil.rmtree if we want to be aggressive
-                # Given we delete files in the loop, it should be empty
-                os.rmdir(temp_dir)
-                print(f"[EagleMetadataBridge] Removed temp directory: {temp_dir}")
-            except Exception as e:
-                print(f"[EagleMetadataBridge] Failed to remove temp directory {temp_dir}: {e}")
-
+                print(f"[EagleMetadataBridge] Failed to delete temp file {abs_path}: {e}")
     if preview:
         return {"ui": {"images": preview_items}}
     return {"ui": {"images": []}}
