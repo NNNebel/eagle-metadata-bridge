@@ -1,0 +1,242 @@
+"""
+test_tag_annotation.py
+
+Unit tests for generate_tags() and generate_annotation().
+These tests verify the Python implementations against known inputs,
+independent of JS and cross-repo fixtures.
+
+Coverage goals:
+- generate_tags: checkpoint, lora, positive/negative tokenisation,
+  parameter tags (seed/steps/cfg/sampler), deduplication
+- generate_annotation: [Generation Info] header, Checkpoint/LoRA lines,
+  per-step blocks (label, Seed, params line, Positive/Negative),
+  CFG formatting, step label includes node ID,
+  single-step checkpoint shown in block, empty-lora LoRA line
+"""
+import pytest
+from metadata_parser.tag_generator import generate_tags
+from metadata_parser.annotation import generate_annotation
+
+
+# ---------------------------------------------------------------------------
+# Shared fixtures
+# ---------------------------------------------------------------------------
+
+def _simple_meta(overrides=None):
+    base = {
+        "checkpoint": "myModel_v10.safetensors",
+        "loras": [],
+        "generation_steps": [
+            {
+                "node_id": "5",
+                "node_type": "KSampler",
+                "is_base": True,
+                "step_index": 1,
+                "checkpoint": "myModel_v10.safetensors",
+                "seed": 42,
+                "steps": 20,
+                "cfg": 7.0,
+                "sampler": "euler",
+                "scheduler": "normal",
+                "positive": "1girl, simple background",
+                "negative": "bad hands",
+                "distance": 1,
+            }
+        ],
+        "seed": 42,
+        "steps": 20,
+        "cfg": 7.0,
+        "sampler": "euler",
+        "scheduler": "normal",
+        "positive": "1girl, simple background",
+        "negative": "bad hands",
+    }
+    if overrides:
+        base.update(overrides)
+    return base
+
+
+def _multi_meta():
+    return {
+        "checkpoint": "model.safetensors",
+        "loras": ["loraA.safetensors"],
+        "generation_steps": [
+            {
+                "node_id": "10",
+                "node_type": "KSampler",
+                "is_base": True,
+                "step_index": 1,
+                "checkpoint": "model.safetensors",
+                "seed": 100,
+                "steps": 30,
+                "cfg": 8.0,
+                "sampler": "dpmpp_2m",
+                "scheduler": "simple",
+                "positive": "masterpiece, 1girl",
+                "negative": "worst quality",
+                "distance": 2,
+            },
+            {
+                "node_id": "20",
+                "node_type": "KSampler",
+                "is_base": False,
+                "step_index": 2,
+                "checkpoint": "model.safetensors",
+                "seed": 200,
+                "steps": 15,
+                "cfg": 5.0,
+                "sampler": "euler",
+                "scheduler": "normal",
+                "positive": "ultra detailed",
+                "negative": "blurry",
+                "distance": 1,
+            },
+        ],
+        "seed": 100,
+        "steps": 30,
+        "cfg": 8.0,
+        "sampler": "dpmpp_2m",
+        "scheduler": "simple",
+        "positive": "masterpiece, 1girl\nultra detailed",
+        "negative": "worst quality\nblurry",
+    }
+
+
+# ---------------------------------------------------------------------------
+# generate_tags
+# ---------------------------------------------------------------------------
+
+class TestGenerateTags:
+
+    def test_checkpoint_tag(self):
+        tags = generate_tags(_simple_meta())
+        assert "mymodel_v10" in tags
+
+    def test_lora_tag(self):
+        meta = _simple_meta({"loras": ["style_lora_v2.safetensors"]})
+        tags = generate_tags(meta)
+        assert "style_lora_v2" in tags
+
+    def test_positive_tokens(self):
+        tags = generate_tags(_simple_meta())
+        assert "1girl" in tags
+        assert "simple background" in tags
+
+    def test_negative_tokens_prefixed(self):
+        tags = generate_tags(_simple_meta())
+        assert "neg:bad hands" in tags
+
+    def test_param_tags(self):
+        tags = generate_tags(_simple_meta())
+        assert "seed:42" in tags
+        assert "steps:20" in tags
+        assert "cfg:7.00" in tags
+        assert "sampler:euler" in tags
+
+    def test_cfg_two_decimal_places(self):
+        meta = _simple_meta({"cfg": 8.0})
+        meta["generation_steps"][0]["cfg"] = 8.0
+        tags = generate_tags(meta)
+        assert "cfg:8.00" in tags
+
+    def test_attention_weight_stripped(self):
+        meta = _simple_meta({"positive": "(1girl:1.2), [background]"})
+        tags = generate_tags(meta)
+        assert "1girl" in tags
+        assert "background" in tags
+
+    def test_empty_loras_no_lora_tag(self):
+        tags = generate_tags(_simple_meta())
+        assert not any(t.startswith("neg:") and "lora" in t for t in tags)
+
+
+# ---------------------------------------------------------------------------
+# generate_annotation
+# ---------------------------------------------------------------------------
+
+class TestGenerateAnnotation:
+
+    def test_header(self):
+        ann = generate_annotation(_simple_meta())
+        assert ann.startswith("[Generation Info]")
+
+    def test_checkpoint_line(self):
+        ann = generate_annotation(_simple_meta())
+        assert "Checkpoint: myModel_v10" in ann
+
+    def test_lora_line_always_present(self):
+        # Even with empty loras, LoRA line must appear
+        ann = generate_annotation(_simple_meta())
+        assert "LoRA: " in ann
+
+    def test_lora_names_listed(self):
+        meta = _simple_meta({"loras": ["styleA.safetensors", "styleB.safetensors"]})
+        ann = generate_annotation(meta)
+        assert "LoRA: styleA, styleB" in ann
+
+    def test_step_label_includes_node_id(self):
+        ann = generate_annotation(_simple_meta())
+        assert "[Base Sampler - KSampler (ID: 5)]" in ann
+
+    def test_step2_label(self):
+        ann = generate_annotation(_multi_meta())
+        assert "[Step 2 - KSampler (ID: 20)]" in ann
+
+    def test_single_step_checkpoint_in_block(self):
+        # Single-step: Checkpoint must appear both at top AND inside the step block
+        ann = generate_annotation(_simple_meta())
+        lines = ann.split("\n")
+        ckpt_lines = [i for i, l in enumerate(lines) if "Checkpoint: myModel_v10" in l]
+        assert len(ckpt_lines) == 2, f"Expected 2 Checkpoint lines, got {ckpt_lines}: {ann}"
+
+    def test_multi_step_checkpoint_not_repeated_when_same(self):
+        # Multi-step with same checkpoint: appears only at top, not in each step
+        ann = generate_annotation(_multi_meta())
+        lines = ann.split("\n")
+        ckpt_lines = [l for l in lines if "Checkpoint: model" in l]
+        assert len(ckpt_lines) == 1
+
+    def test_cfg_one_decimal_place(self):
+        ann = generate_annotation(_simple_meta())
+        assert "CFG: 7.0" in ann
+        assert "CFG: 7.00" not in ann
+
+    def test_params_line_format(self):
+        ann = generate_annotation(_simple_meta())
+        assert "Steps: 20 | CFG: 7.0 | Sampler: euler | Scheduler: normal" in ann
+
+    def test_seed_line(self):
+        ann = generate_annotation(_simple_meta())
+        assert "Seed: 42" in ann
+
+    def test_positive_line(self):
+        ann = generate_annotation(_simple_meta())
+        assert "Positive: 1girl, simple background" in ann
+
+    def test_negative_line(self):
+        ann = generate_annotation(_simple_meta())
+        assert "Negative: bad hands" in ann
+
+    def test_multi_step_both_steps_present(self):
+        ann = generate_annotation(_multi_meta())
+        assert "[Base Sampler - KSampler (ID: 10)]" in ann
+        assert "[Step 2 - KSampler (ID: 20)]" in ann
+        assert "Seed: 100" in ann
+        assert "Seed: 200" in ann
+
+    def test_no_generation_steps_fallback(self):
+        meta = {
+            "checkpoint": "model.safetensors",
+            "loras": [],
+            "generation_steps": [],
+            "seed": 1,
+            "steps": 10,
+            "cfg": 5.0,
+            "sampler": "euler",
+            "scheduler": "normal",
+            "positive": "test",
+            "negative": None,
+        }
+        ann = generate_annotation(meta)
+        assert "Seed: 1" in ann
+        assert "CFG: 5.0" in ann
