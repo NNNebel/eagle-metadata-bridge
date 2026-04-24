@@ -40,6 +40,11 @@
 !tests/expected/bridge-*.json
 !tests/expected/sample/
 !tests/expected/sample/*.json
+# Eagle client package
+!eagle/
+!eagle/__init__.py
+!eagle/client.py
+
 # Scripts
 !scripts/
 !scripts/sync_fixtures.py
