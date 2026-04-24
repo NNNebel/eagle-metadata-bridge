@@ -25,6 +25,8 @@ from metadata_parser.sampler_analyzer import (
     extract_sampler_step as _extract_sampler_step,
 )
 from metadata_parser.comfyui_parser import extract_metadata
+from metadata_parser.tag_generator import generate_tags
+from metadata_parser.annotation import generate_annotation
 
 
 # ---------------------------------------------------------------------------
@@ -75,148 +77,6 @@ def _build_jpeg_exif(entries):
     return b'Exif\x00\x00' + tiff
 
 
-# ---------------------------------------------------------------------------
-# Tag / annotation generation  (mirrors JS TagGenerator rules)
-# ---------------------------------------------------------------------------
-
-def _basename_no_ext(path):
-    """Extract filename without extension, lowercase."""
-    return os.path.splitext(os.path.basename(path))[0].lower()
-
-
-def _tokenize_prompt(text):
-    """
-    Split a prompt string into individual tag strings.
-    Handles comma-separated tokens, strips attention weights like (word:1.2).
-    """
-    if not text:
-        return []
-    tags = []
-    # Collapse newlines into commas
-    text = text.replace("\n", ",")
-    for raw in text.split(","):
-        # Strip attention weight syntax: (text:1.2) or [text]
-        token = re.sub(r"[\(\[\{]|[\)\]\}]|:[0-9.]+", "", raw).strip()
-        if token:
-            tags.append(token)
-    return tags
-
-
-def generate_tags(meta):
-    """
-    Generate Eagle tags from extracted metadata.
-    Mirrors the JS TagGenerator.generate() logic with all options enabled.
-    Returns a list of tag strings.
-    """
-    tags = []
-
-    # Checkpoint
-    if meta.get("checkpoint"):
-        tags.append(_basename_no_ext(meta["checkpoint"]))
-
-    # LoRAs
-    for lora in meta.get("loras") or []:
-        tags.append(_basename_no_ext(lora))
-
-    # Positive prompt tokens
-    for token in _tokenize_prompt(meta.get("positive")):
-        tags.append(token)
-
-    # Negative prompt tokens  (neg: prefix)
-    for token in _tokenize_prompt(meta.get("negative")):
-        tags.append(f"neg:{token}")
-
-    # Parameters
-    if meta.get("seed") is not None:
-        tags.append(f"seed:{meta['seed']}")
-    if meta.get("steps") is not None:
-        tags.append(f"steps:{meta['steps']}")
-    if meta.get("cfg") is not None:
-        tags.append(f"cfg:{float(meta['cfg']):.2f}")
-    if meta.get("sampler"):
-        tags.append(f"sampler:{str(meta['sampler']).lower()}")
-
-    return tags
-
-
-def _step_label(step):
-    node_type = step.get("node_type", "Sampler")
-    if step.get("is_base"):
-        return f"[Base Sampler - {node_type}]"
-    return f"[Step {step['step_index']} - {node_type}]"
-
-
-def generate_annotation(meta):
-    """
-    Generate annotation matching comfyui-auto-tagger with all output settings enabled.
-    Format:
-      [Generation Info]
-      Checkpoint: <name without ext>
-      LoRA: <name without ext>, ...
-
-      [Base Sampler - KSampler]
-      Seed: <value>
-      Steps: <N> | CFG: <N> | Sampler: <name> | Scheduler: <name>
-      Positive: <text>
-      Negative: <text>
-
-      [Step 2 - KSampler]
-      ...
-    """
-    lines = ["[Generation Info]"]
-
-    if meta.get("checkpoint"):
-        lines.append(f"Checkpoint: {os.path.splitext(meta['checkpoint'])[0]}")
-
-    if meta.get("loras"):
-        lora_names = [os.path.splitext(l)[0] for l in meta["loras"]]
-        lines.append("LoRA: " + ", ".join(lora_names))
-
-    steps = meta.get("generation_steps") or []
-
-    if steps:
-        for step in steps:
-            lines.append("")
-            lines.append(_step_label(step))
-            if step.get("seed") is not None:
-                lines.append(f"Seed: {step['seed']}")
-            params = []
-            if step.get("steps") is not None:
-                params.append(f"Steps: {step['steps']}")
-            if step.get("cfg") is not None:
-                params.append(f"CFG: {float(step['cfg']):.2f}")
-            if step.get("sampler"):
-                params.append(f"Sampler: {step['sampler']}")
-            if step.get("scheduler"):
-                params.append(f"Scheduler: {step['scheduler']}")
-            if params:
-                lines.append(" | ".join(params))
-            if step.get("positive"):
-                lines.append(f"Positive: {step['positive']}")
-            if step.get("negative"):
-                lines.append(f"Negative: {step['negative']}")
-    else:
-        # Fallback: no generation_steps (single sampler legacy path)
-        lines.append("")
-        if meta.get("seed") is not None:
-            lines.append(f"Seed: {meta['seed']}")
-        params = []
-        if meta.get("steps") is not None:
-            params.append(f"Steps: {meta['steps']}")
-        if meta.get("cfg") is not None:
-            params.append(f"CFG: {float(meta['cfg']):.2f}")
-        if meta.get("sampler"):
-            params.append(f"Sampler: {meta['sampler']}")
-        if meta.get("scheduler"):
-            params.append(f"Scheduler: {meta['scheduler']}")
-        if params:
-            lines.append(" | ".join(params))
-        if meta.get("positive"):
-            lines.append(f"Positive: {meta['positive']}")
-        if meta.get("negative"):
-            lines.append(f"Negative: {meta['negative']}")
-
-    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

@@ -42,7 +42,10 @@ def _load_executor_functions():
     code = (
         "import os, re, json\n"
         "from metadata_parser.comfyui_parser import extract_metadata\n"
-    ) + src[src.index('\ndef _basename_no_ext'):cutoff]
+        "from metadata_parser.tag_generator import generate_tags\n"
+        "from metadata_parser.annotation import generate_annotation\n"
+    )
+    # No additional executor.py slice needed — all pure functions are now in submodules
     ns = {'__file__': src_path}
     exec(compile(code, 'executor.py', 'exec'), ns)
     return ns
