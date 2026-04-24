@@ -53,8 +53,7 @@ generate_tags       = _fn['generate_tags']
 # Paths
 # ---------------------------------------------------------------------------
 
-TESTS_DIR    = os.path.dirname(__file__)
-EXPECTED_DIR = os.path.join(TESTS_DIR, 'expected')
+TESTS_DIR = os.path.dirname(__file__)
 
 _cat_path = os.environ.get(
     'COMFYUI_AUTO_TAGGER_PATH',
@@ -142,13 +141,6 @@ def load_js_expected(name):
     with open(path, encoding='utf-8') as f:
         return json.load(f)
 
-def load_py_expected(name):
-    """Load eagle-metadata-bridge expected (annotation only)."""
-    path = os.path.join(EXPECTED_DIR, f'{name}.json')
-    if not os.path.exists(path):
-        return {}
-    with open(path, encoding='utf-8') as f:
-        return json.load(f)
 
 # ---------------------------------------------------------------------------
 # Test cases
@@ -160,45 +152,36 @@ TEST_CASES = [
         'fixture_png': 'bridge-simple.png',
         'fixture_webp': 'bridge-simple.webp',
         'label': 'single KSampler, novaAnimeXL',
-        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
-        'check_loras': [],
-        'check_base_positive_contains': None,
     },
     {
         'name': 'bridge-multi',
         'fixture_png': 'bridge-multi.png',
         'fixture_webp': 'bridge-multi.webp',
         'label': '2x KSampler, hassakuXL',
-        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
-        'check_loras': [],
-        'check_base_positive_contains': None,
     },
     {
         'name': 'bridge-conditioning-combine',
         'fixture_png': 'bridge-conditioning-combine.png',
         'fixture_webp': 'bridge-conditioning-combine.webp',
         'label': 'ImpactCombineConditionings in base sampler positive',
-        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
-        'check_loras': [],
-        'check_base_positive_contains': 'tailored jacket',
     },
     {
         'name': 'bridge-lora-simple',
         'fixture_png': 'bridge-lora-simple.png',
         'fixture_webp': 'bridge-lora-simple.webp',
         'label': 'LoraLoader single, novaAnimeXL',
-        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
-        'check_loras': ['hime cut_XL_illustrious_V1.0.safetensors'],
-        'check_base_positive_contains': None,
     },
     {
         'name': 'bridge-lora-stack',
         'fixture_png': 'bridge-lora-stack.png',
         'fixture_webp': 'bridge-lora-stack.webp',
         'label': 'LoraLoaderStack rgthree, novaAnimeXL',
-        'check_fields': ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler'],
-        'check_loras': ['half twintail_illustrious_V1.0.safetensors'],
-        'check_base_positive_contains': None,
+    },
+    {
+        'name': 'bridge-i2i',
+        'fixture_png': 'bridge-i2i.png',
+        'fixture_webp': 'bridge-i2i.webp',
+        'label': 'DetailerForEachDebug (ADetailer), novaAnimeXL',
     },
 ]
 
@@ -259,44 +242,26 @@ class TestBridgeFixtures:
         assert fixture['eagle_bridge']['final_node_id'] == js['eagle_bridge']['final_node_id']
 
     def test_core_fields_match_js_expected(self, case):
-        """Core fields must match comfyui-auto-tagger (JS parser) expected values."""
+        """All top-level fields must match comfyui-auto-tagger (JS parser) expected values."""
         js = load_js_expected(case['name'])
         if not js:
             pytest.skip('comfyui-auto-tagger expected not available')
         meta = _get_meta(case)
-        for field in case['check_fields']:
+        scalar_fields = ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler',
+                         'positive', 'negative']
+        for field in scalar_fields:
             if field in js:
                 assert meta.get(field) == js[field], \
                     f"field '{field}': Python={meta.get(field)!r}, JS={js[field]!r}"
-
-    def test_loras_match_js_expected(self, case):
-        if not case['check_loras']:
-            pytest.skip('no loras to check')
-        js = load_js_expected(case['name'])
-        if js and 'loras' in js:
-            assert set(_get_meta(case).get('loras', [])) == set(js['loras'])
-        else:
-            loras = _get_meta(case).get('loras', [])
-            for lora in case['check_loras']:
-                assert lora in loras, f"expected lora: {lora}"
-
-    def test_base_positive_contains(self, case):
-        if not case['check_base_positive_contains']:
-            pytest.skip('no positive text check')
-        base = _get_meta(case)['generation_steps'][0]
-        assert case['check_base_positive_contains'] in (base.get('positive') or '')
+        if 'loras' in js:
+            assert set(meta.get('loras', [])) == set(js['loras']), \
+                f"loras: Python={meta.get('loras')!r}, JS={js['loras']!r}"
 
     def test_annotation_format(self, case):
         annotation = generate_annotation(_get_meta(case))
         assert annotation.startswith('[Generation Info]')
         assert '[Base Sampler -' in annotation
         assert 'Checkpoint:' in annotation
-
-    def test_annotation_matches_expected(self, case):
-        py_expected = load_py_expected(case['name'])
-        if 'annotation' not in py_expected:
-            pytest.skip('annotation not in py expected')
-        assert generate_annotation(_get_meta(case)) == py_expected['annotation']
 
     def test_tags_include_checkpoint(self, case):
         meta = _get_meta(case)

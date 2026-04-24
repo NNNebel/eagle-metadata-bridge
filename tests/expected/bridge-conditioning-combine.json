@@ -1,3 +1,34 @@
 {
-  "annotation": "[Generation Info]\nCheckpoint: novaAnimeXL_ilV140\n\n[Base Sampler - KSampler]\nSeed: 1111111\nSteps: 30 | CFG: 8.00 | Sampler: dpmpp_2m | Scheduler: simple\nPositive: masterpiece, \n1girl, \ntailored jacket,stick pants\nNegative: worst quality, \nbad quality,\nbad hands, extra limbs, "
+  "format": "comfyui",
+  "sampler_fallback": false,
+  "eagle_bridge": {
+    "final_node_id": "20"
+  },
+  "generationSteps": [
+    {
+      "nodeId": "18",
+      "nodeName": "KSampler",
+      "nodeType": "KSampler",
+      "isBase": true,
+      "seed": 1111111,
+      "steps": 30,
+      "cfg": 8,
+      "sampler": "dpmpp_2m",
+      "scheduler": "simple",
+      "positive": "masterpiece,, 1girl,, tailored jacket,stick pants",
+      "negative": "worst quality,, bad quality,, bad hands, extra limbs,",
+      "checkpoint": "novaAnimeXL_ilV140.safetensors",
+      "distance": 1,
+      "stepIndex": 1
+    }
+  ],
+  "seed": 1111111,
+  "steps": 30,
+  "cfg": 8,
+  "sampler": "dpmpp_2m",
+  "scheduler": "simple",
+  "checkpoint": "novaAnimeXL_ilV140.safetensors",
+  "positive": "masterpiece,, 1girl,, tailored jacket,stick pants",
+  "negative": "worst quality,, bad quality,, bad hands, extra limbs,",
+  "loras": []
 }

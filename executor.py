@@ -8,21 +8,40 @@ from PIL.PngImagePlugin import PngInfo
 import folder_paths
 
 
-EAGLE_API_BASE = "http://localhost:41595"
+def _load_eagle_api_base():
+    config_path = os.path.join(os.path.dirname(__file__), 'config.json')
+    try:
+        with open(config_path, encoding='utf-8') as f:
+            port = json.load(f).get('eagle_port', 41595)
+            return f"http://localhost:{port}"
+    except FileNotFoundError:
+        return "http://localhost:41595"
+    except Exception as e:
+        print(f"[EagleMetadataBridge] Failed to read config.json: {e}, using default port 41595")
+        return "http://localhost:41595"
+
+EAGLE_API_BASE = _load_eagle_api_base()
 
 
-def _resolve_folder_id(folder_name):
-    """Resolve a folder name to its Eagle folder ID. Returns None if not found."""
-    if not folder_name:
-        return None
+def _fetch_eagle_folders():
+    """Fetch Eagle folder tree. Returns list or None on error."""
     try:
         resp = requests.get(f"{EAGLE_API_BASE}/api/folder/list", timeout=5)
         if not resp.ok:
             print(f"[EagleMetadataBridge] Failed to fetch folder list: {resp.status_code}")
             return None
-        folders = resp.json().get("data", [])
+        return resp.json().get("data", [])
     except Exception as e:
         print(f"[EagleMetadataBridge] Could not fetch folder list: {e}")
+        return None
+
+
+def _resolve_folder_id(folder_name):
+    """Resolve a single folder name to its Eagle folder ID. Returns None if not found."""
+    if not folder_name:
+        return None
+    folders = _fetch_eagle_folders()
+    if folders is None:
         return None
 
     def search(nodes):
@@ -38,6 +57,58 @@ def _resolve_folder_id(folder_name):
     if folder_id is None:
         print(f"[EagleMetadataBridge] Folder not found: {folder_name!r}")
     return folder_id
+
+
+def _ensure_eagle_folder_path(path_str):
+    """
+    Walk or create a nested Eagle folder path like "2D/2026-04-23/checkpoint".
+    Each segment is created under the previous one if it doesn't exist.
+    Returns the deepest folder's ID, or None on failure.
+    """
+    segments = [s for s in path_str.replace('\\', '/').split('/') if s]
+    if not segments:
+        return None
+
+    folders = _fetch_eagle_folders()
+    if folders is None:
+        return None
+
+    def find_in(nodes, name):
+        for f in nodes:
+            if f.get("name") == name:
+                return f
+        return None
+
+    parent_id = None
+    current_level = folders
+
+    for segment in segments:
+        node = find_in(current_level, segment)
+        if node:
+            parent_id = node["id"]
+            current_level = node.get("children") or []
+        else:
+            # Create the folder under parent_id
+            body = {"folderName": segment}
+            if parent_id:
+                body["parent"] = parent_id
+            try:
+                resp = requests.post(f"{EAGLE_API_BASE}/api/folder/create", json=body, timeout=5)
+                if not resp.ok:
+                    print(f"[EagleMetadataBridge] Failed to create folder {segment!r}: {resp.status_code} {resp.text}")
+                    return None
+                created = resp.json().get("data", {})
+                parent_id = created.get("id")
+                if not parent_id:
+                    print(f"[EagleMetadataBridge] No ID returned for created folder {segment!r}")
+                    return None
+                current_level = []
+                print(f"[EagleMetadataBridge] Created Eagle folder: {segment!r} (id={parent_id})")
+            except Exception as e:
+                print(f"[EagleMetadataBridge] Error creating Eagle folder {segment!r}: {e}")
+                return None
+
+    return parent_id
 
 
 # ---------------------------------------------------------------------------
@@ -73,6 +144,19 @@ def _build_webp_exif(entries):
     for s in encoded:
         buf += s
     return buf
+
+
+def _build_jpeg_exif(entries):
+    """
+    Build JPEG APP1 EXIF bytes (Exif\\0\\0 + TIFF block).
+    Uses same TIFF structure as WebP; Pillow wraps it in the APP1 segment.
+    Tag mapping (matches ComfyUI JPEG format):
+      0x010E (ImageDescription) → Workflow
+      0x010F (Make)             → Prompt
+      0x013B (Artist)           → eagle_bridge
+    """
+    tiff = _build_webp_exif(entries)
+    return b'Exif\x00\x00' + tiff
 
 
 # ---------------------------------------------------------------------------
@@ -211,9 +295,9 @@ def _resolve_text_from_clip_node(prompt, node_id, visited=None):
             val = inputs.get(k)
             if isinstance(val, list) and len(val) == 2:
                 result = _resolve_text_from_clip_node(prompt, str(val[0]), visited)
-                if result:
-                    parts.append(result)
-        return "\n".join(parts) if parts else None
+                if result and result.strip():
+                    parts.append(result.strip())
+        return ", ".join(parts) if parts else None
 
     # Unknown node: try common text keys first
     for key in ("text", "text_g", "text_l", "string"):
@@ -278,12 +362,14 @@ def _extract_sampler_step(prompt, nid, node):
     positive = None
     pos_link = inputs.get("positive")
     if isinstance(pos_link, list) and len(pos_link) == 2:
-        positive = _resolve_text_from_clip_node(prompt, str(pos_link[0]))
+        t = _resolve_text_from_clip_node(prompt, str(pos_link[0]))
+        positive = t.strip() if t is not None else None
 
     negative = None
     neg_link = inputs.get("negative")
     if isinstance(neg_link, list) and len(neg_link) == 2:
-        negative = _resolve_text_from_clip_node(prompt, str(neg_link[0]))
+        t = _resolve_text_from_clip_node(prompt, str(neg_link[0]))
+        negative = t.strip() if t is not None else None
 
     return {
         "node_id": nid,
@@ -388,8 +474,20 @@ def extract_metadata(prompt, final_node_id):
         meta["cfg"] = base["cfg"]
         meta["sampler"] = base["sampler"]
         meta["scheduler"] = base["scheduler"]
-        meta["positive"] = base["positive"]
-        meta["negative"] = base["negative"]
+        # Merge prompts from all samplers (mirrors JS ComfyUIParser behaviour)
+        seen_pos, seen_neg = set(), set()
+        all_pos, all_neg = [], []
+        for step in sampler_nodes:
+            p = step.get("positive")
+            if p and p not in seen_pos:
+                seen_pos.add(p)
+                all_pos.append(p)
+            n = step.get("negative")
+            if n and n not in seen_neg:
+                seen_neg.add(n)
+                all_neg.append(n)
+        meta["positive"] = "\n".join(all_pos) if all_pos else None
+        meta["negative"] = "\n".join(all_neg) if all_neg else None
 
     return meta
 
@@ -539,21 +637,123 @@ def generate_annotation(meta):
 
 
 # ---------------------------------------------------------------------------
+# Path expression expansion (%date:...% / %NodeTitle.param%)
+# ---------------------------------------------------------------------------
+
+def _expand_path_expr(path_str, prompt, extra_pnginfo, now=None):
+    """
+    Expand placeholders in a path string.
+      %date:yyyy-MM-dd%  → current date (yyyy/MM/dd/HH/mm/ss supported)
+      %date:hhmmss%      → current time
+      %NodeTitle.param%  → value of input `param` from the node titled NodeTitle
+    """
+    from datetime import datetime
+    if not path_str:
+        return path_str
+    if now is None:
+        now = datetime.now()
+
+    workflow = {}
+    if extra_pnginfo and isinstance(extra_pnginfo.get('workflow'), dict):
+        workflow = extra_pnginfo['workflow']
+
+    # Build ComfyUI display-name → class_type reverse map
+    # e.g. "Load Checkpoint" → "CheckpointLoaderSimple"
+    display_to_class = {}
+    try:
+        import nodes as _comfy_nodes
+        for class_type, disp in getattr(_comfy_nodes, 'NODE_DISPLAY_NAME_MAPPINGS', {}).items():
+            display_to_class[disp] = class_type
+    except Exception:
+        pass
+
+    # Build title → node_id map from workflow
+    # Priority: explicit title > display name > class type
+    title_to_id = {}
+    for node in workflow.get('nodes', []):
+        node_id = str(node.get('id', ''))
+        if not node_id:
+            continue
+        class_type = node.get('type', '')
+        # class type (e.g. "CheckpointLoaderSimple")
+        if class_type:
+            title_to_id[class_type] = node_id
+        # display name (e.g. "Load Checkpoint") via NODE_DISPLAY_NAME_MAPPINGS
+        try:
+            import nodes as _comfy_nodes
+            disp = getattr(_comfy_nodes, 'NODE_DISPLAY_NAME_MAPPINGS', {}).get(class_type, '')
+            if disp:
+                title_to_id[disp] = node_id
+        except Exception:
+            pass
+        # explicit user-set title overrides all
+        if node.get('title'):
+            title_to_id[node['title']] = node_id
+
+    def replace(m):
+        inner = m.group(1)
+        # %date:format%
+        if inner.startswith('date:'):
+            fmt = inner[5:]
+            fmt = (fmt
+                   .replace('yyyy', '%Y').replace('MM', '%m').replace('dd', '%d')
+                   .replace('HH', '%H').replace('hh', '%H')
+                   .replace('mm', '%M').replace('ss', '%S'))
+            return now.strftime(fmt)
+        # %NodeTitle.param%
+        if '.' in inner:
+            node_title, param_key = inner.split('.', 1)
+            node_id = title_to_id.get(node_title)
+            if node_id is None:
+                available = list(title_to_id.keys())
+                print(f"[EagleMetadataBridge] Placeholder %{inner}%: node title {node_title!r} not found. "
+                      f"Available titles/types: {available}")
+            elif prompt:
+                val = _resolve_link(prompt, node_id, param_key)
+                if val is not None:
+                    # Strip directory path and extension for a clean folder name
+                    return os.path.splitext(os.path.basename(str(val)))[0]
+                print(f"[EagleMetadataBridge] Placeholder %{inner}%: param {param_key!r} not resolved on node {node_id}")
+        return m.group(0)  # leave unexpanded if unresolvable
+
+    expanded = re.sub(r'%([^%]+)%', replace, path_str)
+
+    # Warn if any placeholder was not expanded
+    unresolved = re.findall(r'%([^%]+)%', expanded)
+    if unresolved:
+        print(f"[EagleMetadataBridge] WARNING: unresolved placeholders in path: {unresolved}. "
+              f"Result path: {expanded!r}")
+
+    return expanded
+
+
+# ---------------------------------------------------------------------------
 # Main execute function
 # ---------------------------------------------------------------------------
 
-def execute(images, filename_prefix, eagle_folder="",
+def execute(images, filename_prefix, eagle_folder_path="",
             tags="", format="PNG", compress_level=4, quality=85,
-            preview=True, prompt=None, extra_pnginfo=None, unique_id=None):
+            preview=True, local_save_path="",
+            prompt=None, extra_pnginfo=None, unique_id=None):
 
     is_png = format == "PNG"
-    ext = ".png" if is_png else ".webp"
+    is_jpeg = format == "JPEG"
+    ext = ".png" if is_png else (".jpg" if is_jpeg else ".webp")
     results = []
     preview_items = []
 
     output_dir = folder_paths.get_output_directory()
+
+    # Expand placeholders in filename_prefix here (prompt not yet available, use prompt arg directly)
+    from datetime import datetime
+    _now_pre = datetime.now()
+    _expanded_prefix = _expand_path_expr(filename_prefix.strip(), prompt, extra_pnginfo, _now_pre)
+    if '%' in _expanded_prefix:
+        print(f"[EagleMetadataBridge] filename_prefix has unresolved placeholders: {_expanded_prefix!r}, using original.")
+        _expanded_prefix = filename_prefix
+
     full_output_folder, filename, counter, subfolder, _ = folder_paths.get_save_image_path(
-        filename_prefix, output_dir, images[0].shape[1], images[0].shape[0]
+        _expanded_prefix, output_dir, images[0].shape[1], images[0].shape[0]
     )
 
     # Extract metadata from graph for auto-tagging
@@ -576,36 +776,76 @@ def execute(images, filename_prefix, eagle_folder="",
     manual_tag_list = [t.strip() for t in tags.split(",") if t.strip()]
     merged_tags = manual_tag_list + [t for t in auto_tags if t not in manual_tag_list]
 
+    # Use the same timestamp for all path expansions in this execution
+    now = _now_pre
+    _raw_local = local_save_path.strip()
+    _expanded_local_dir = _expand_path_expr(_raw_local, prompt, extra_pnginfo, now)
+    use_local_path = bool(_expanded_local_dir) and '%' not in _expanded_local_dir
+
+    if _raw_local and not use_local_path:
+        print(f"[EagleMetadataBridge] local_save_path has unresolved placeholders, skipping local save.")
+
+    if use_local_path:
+        # Relative paths are resolved from the ComfyUI OUTPUT directory
+        if not os.path.isabs(_expanded_local_dir):
+            _expanded_local_dir = os.path.join(output_dir, _expanded_local_dir)
+        print(f"[EagleMetadataBridge] local dir: {_expanded_local_dir!r}, prefix: {_expanded_prefix!r}")
+
     for batch_idx, image_tensor in enumerate(images):
         img_np = np.clip(255.0 * image_tensor.cpu().numpy(), 0, 255).astype(np.uint8)
         img = Image.fromarray(img_np)
 
-        file = f"{filename}_{counter + batch_idx:05d}_{ext}"
-        abs_path = os.path.abspath(os.path.join(full_output_folder, file))
+        _file_name = f"{_expanded_prefix}_{counter + batch_idx:05d}{ext}"
 
-        if is_png:
-            pnginfo = PngInfo()
-            if prompt is not None:
-                pnginfo.add_text("prompt", json.dumps(prompt))
-            if extra_pnginfo is not None:
-                for key, value in extra_pnginfo.items():
-                    pnginfo.add_text(key, json.dumps(value))
-            if unique_id is not None:
-                pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
-            img.save(abs_path, pnginfo=pnginfo, compress_level=compress_level)
+        # Determine save location
+        if use_local_path:
+            try:
+                os.makedirs(_expanded_local_dir, exist_ok=True)
+                abs_path = os.path.abspath(os.path.join(_expanded_local_dir, _file_name))
+            except Exception as e:
+                print(f"[EagleMetadataBridge] Failed to create local directory: {e}")
+                abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
         else:
-            # Write metadata as EXIF (matches ComfyUI default Save Image format)
-            exif_entries = []
-            workflow = (extra_pnginfo or {}).get('workflow')
-            if workflow is not None:
-                exif_entries.append((0x010F, f"workflow: {json.dumps(workflow)}"))
-            if prompt is not None:
-                exif_entries.append((0x0110, f"prompt: {json.dumps(prompt)}"))
-            if unique_id is not None:
-                exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
-            exif_bytes = _build_webp_exif(exif_entries) if exif_entries else None
-            img.save(abs_path, format="WEBP", quality=quality, exif=exif_bytes)
+            abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
 
+        file = os.path.basename(abs_path)
+
+        def _save_image(path):
+            if is_png:
+                pnginfo = PngInfo()
+                if prompt is not None:
+                    pnginfo.add_text("prompt", json.dumps(prompt))
+                if extra_pnginfo is not None:
+                    for key, value in extra_pnginfo.items():
+                        pnginfo.add_text(key, json.dumps(value))
+                if unique_id is not None:
+                    pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
+                img.save(path, pnginfo=pnginfo, compress_level=compress_level)
+            elif is_jpeg:
+                # JPEG: EXIF APP1 with TIFF IFD (matches ComfyUI SaveImage JPEG format)
+                exif_entries = []
+                workflow = (extra_pnginfo or {}).get('workflow')
+                if workflow is not None:
+                    exif_entries.append((0x010E, f"Workflow: {json.dumps(workflow)}"))
+                if prompt is not None:
+                    exif_entries.append((0x010F, f"Prompt: {json.dumps(prompt)}"))
+                if unique_id is not None:
+                    exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
+                exif_bytes = _build_jpeg_exif(exif_entries) if exif_entries else None
+                img.save(path, format="JPEG", quality=quality, exif=exif_bytes)
+            else:
+                exif_entries = []
+                workflow = (extra_pnginfo or {}).get('workflow')
+                if workflow is not None:
+                    exif_entries.append((0x010F, f"workflow: {json.dumps(workflow)}"))
+                if prompt is not None:
+                    exif_entries.append((0x0110, f"prompt: {json.dumps(prompt)}"))
+                if unique_id is not None:
+                    exif_entries.append((0x013B, f"eagle_bridge: {json.dumps({'version': 1, 'final_node_id': str(unique_id)})}"))
+                exif_bytes = _build_webp_exif(exif_entries) if exif_entries else None
+                img.save(path, format="WEBP", quality=quality, exif=exif_bytes)
+
+        _save_image(abs_path)
         print(f"[EagleMetadataBridge] Saved: {abs_path}")
 
         # Send to Eagle
@@ -615,21 +855,35 @@ def execute(images, filename_prefix, eagle_folder="",
             "tags": merged_tags,
             "annotation": auto_annotation,
         }
-        if eagle_folder:
-            folder_id = _resolve_folder_id(eagle_folder)
-            if folder_id:
-                payload["folderId"] = folder_id
+        if eagle_folder_path:
+            expanded_efp = _expand_path_expr(eagle_folder_path.strip(), prompt, extra_pnginfo, now)
+            if '%' in expanded_efp:
+                print(f"[EagleMetadataBridge] eagle_folder_path has unresolved placeholders, skipping folder assignment.")
+            else:
+                print(f"[EagleMetadataBridge] eagle_folder_path expanded: {expanded_efp!r}")
+                folder_id = _ensure_eagle_folder_path(expanded_efp)
+                if folder_id:
+                    payload["folderId"] = folder_id
 
         try:
             resp = requests.post(f"{EAGLE_API_BASE}/api/item/addFromPath", json=payload, timeout=10)
             if resp.ok:
                 print(f"[EagleMetadataBridge] Sent to Eagle: {resp.json()}")
             else:
-                print(f"[EagleMetadataBridge] Eagle API error {resp.status_code}: {resp.text}")
+                raise RuntimeError(
+                    f"Eagle API returned {resp.status_code}: {resp.text}\n"
+                    f"Image was saved to: {abs_path}"
+                )
         except requests.exceptions.ConnectionError:
-            print(f"[EagleMetadataBridge] Eagle not running. Image saved locally.")
+            raise RuntimeError(
+                f"Eagle に接続できません (port {EAGLE_API_BASE})。"
+                f" Eagle が起動しているか、config.json のポート番号を確認してください。\n"
+                f"Image was saved to: {abs_path}"
+            )
+        except RuntimeError:
+            raise
         except Exception as e:
-            print(f"[EagleMetadataBridge] Eagle API failed: {e}")
+            raise RuntimeError(f"Eagle API failed: {e}\nImage was saved to: {abs_path}") from e
 
         preview_items.append({"filename": file, "subfolder": subfolder, "type": "output"})
 

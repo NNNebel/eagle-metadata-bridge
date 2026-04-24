@@ -12,6 +12,7 @@ Usage:
 import argparse
 import json
 import os
+import re
 import shutil
 import struct
 import sys
@@ -27,7 +28,12 @@ def parse_args():
     return p.parse_args()
 
 
+# ---------------------------------------------------------------------------
+# Format-specific metadata readers
+# ---------------------------------------------------------------------------
+
 def read_png_chunks(path):
+    """Return {'prompt': str, 'eagle_bridge': str, ...} from PNG tEXt chunks."""
     chunks = {}
     with open(path, 'rb') as f:
         f.read(8)
@@ -47,6 +53,108 @@ def read_png_chunks(path):
     return chunks
 
 
+def _parse_kv_metadata(text):
+    """Parse 'key: {json}' entries from text (EXIF/XMP). Returns dict."""
+    result = {}
+    decoder = json.JSONDecoder()
+    for key in ('workflow', 'prompt', 'eagle_bridge'):
+        m = re.search(key + r':\s*(\{)', text, re.IGNORECASE)
+        if m:
+            try:
+                obj, _ = decoder.raw_decode(text, m.start(1))
+                result[key] = obj
+            except json.JSONDecodeError:
+                pass
+    return result
+
+
+def _read_webp_riff_chunk(path, chunk_types=(b'EXIF', b'XMP ')):
+    """Return raw bytes of the first matching RIFF chunk, or None."""
+    with open(path, 'rb') as f:
+        data = f.read()
+    if data[:4] != b'RIFF' or data[8:12] != b'WEBP':
+        return None
+    offset = 12
+    while offset < len(data) - 8:
+        chunk_type = data[offset:offset + 4]
+        chunk_size = struct.unpack_from('<I', data, offset + 4)[0]
+        if chunk_type in chunk_types:
+            return data[offset + 8:offset + 8 + chunk_size]
+        offset += 8 + chunk_size + (chunk_size % 2)
+    return None
+
+
+def read_webp_metadata(path):
+    """
+    Extract prompt and eagle_bridge from a WebP file.
+    Returns {'prompt': dict, 'eagle_bridge': dict} or None.
+    """
+    raw = _read_webp_riff_chunk(path)
+    if raw is None:
+        return None
+    text = raw.decode('latin-1', errors='replace')
+    meta = _parse_kv_metadata(text)
+    if 'prompt' not in meta or 'eagle_bridge' not in meta:
+        return None
+    return {'prompt': meta['prompt'], 'eagle_bridge': meta['eagle_bridge']}
+
+
+def read_jpeg_metadata(path):
+    """
+    Extract prompt and eagle_bridge from a JPEG file via EXIF tags.
+    Tag mapping written by executor.py _build_jpeg_exif:
+      0x010F (Make=271)   → "Prompt: {json}"  or "workflow: {json}"
+      0x013B (Artist=315) → "eagle_bridge: {json}"
+    Returns {'prompt': dict, 'eagle_bridge': dict} or None.
+    """
+    try:
+        from PIL import Image
+    except ImportError:
+        print('  warning: Pillow not installed; skipping JPEG metadata read')
+        return None
+
+    try:
+        img = Image.open(path)
+        exif_data = img.getexif()
+    except Exception:
+        return None
+
+    MAKE_TAG = 0x010F    # 271
+    ARTIST_TAG = 0x013B  # 315
+
+    make_val = exif_data.get(MAKE_TAG, '')
+    artist_val = exif_data.get(ARTIST_TAG, '')
+
+    combined = f"{make_val}\n{artist_val}"
+    meta = _parse_kv_metadata(combined)
+    if 'prompt' not in meta or 'eagle_bridge' not in meta:
+        return None
+    return {'prompt': meta['prompt'], 'eagle_bridge': meta['eagle_bridge']}
+
+
+# Map extension → reader function
+_READERS = {
+    '.png': lambda path: _png_to_payload(path),
+    '.webp': read_webp_metadata,
+    '.jpg': read_jpeg_metadata,
+    '.jpeg': read_jpeg_metadata,
+}
+
+
+def _png_to_payload(path):
+    chunks = read_png_chunks(path)
+    if 'prompt' not in chunks or 'eagle_bridge' not in chunks:
+        return None
+    return {
+        'prompt': json.loads(chunks['prompt']),
+        'eagle_bridge': json.loads(chunks['eagle_bridge']),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Sync
+# ---------------------------------------------------------------------------
+
 def sync(cat_path):
     repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     cat_fixtures = os.path.join(cat_path, 'tests', 'fixtures')
@@ -60,22 +168,21 @@ def sync(cat_path):
     copied_fixtures = 0
     copied_expected = 0
 
-    # Copy bridge-*.png → bridge-*.json (extract prompt + eagle_bridge chunks)
-    for fname in os.listdir(cat_fixtures):
-        if not (fname.startswith('bridge-') and fname.endswith('.png')):
+    for fname in sorted(os.listdir(cat_fixtures)):
+        if not fname.startswith('bridge-'):
             continue
-        name = fname[:-4]  # strip .png
-        src_png = os.path.join(cat_fixtures, fname)
+        name, ext = os.path.splitext(fname)
+        reader = _READERS.get(ext.lower())
+        if reader is None:
+            continue
+
+        src = os.path.join(cat_fixtures, fname)
         dst_json = os.path.join(dst_fixtures, f'{name}.json')
         try:
-            chunks = read_png_chunks(src_png)
-            if 'prompt' not in chunks or 'eagle_bridge' not in chunks:
-                print(f'  skip {fname}: missing prompt or eagle_bridge chunk')
+            payload = reader(src)
+            if payload is None:
+                print(f'  skip {fname}: missing prompt or eagle_bridge metadata')
                 continue
-            payload = {
-                'prompt': json.loads(chunks['prompt']),
-                'eagle_bridge': json.loads(chunks['eagle_bridge']),
-            }
             with open(dst_json, 'w', encoding='utf-8') as f:
                 json.dump(payload, f, ensure_ascii=False, indent=2)
             print(f'  fixture: {fname} → tests/fixtures/{name}.json')
@@ -84,7 +191,7 @@ def sync(cat_path):
             print(f'  error processing {fname}: {e}')
 
     # Copy bridge-*.json expected files
-    for fname in os.listdir(cat_expected):
+    for fname in sorted(os.listdir(cat_expected)):
         if not (fname.startswith('bridge-') and fname.endswith('.json')):
             continue
         src = os.path.join(cat_expected, fname)
@@ -95,7 +202,7 @@ def sync(cat_path):
 
     print(f'\nDone: {copied_fixtures} fixtures, {copied_expected} expected files copied.')
     if copied_fixtures == 0:
-        print('No PNG fixtures found. Generate them in ComfyUI first.')
+        print('No fixtures found. Generate them in ComfyUI first.')
         sys.exit(1)
 
 

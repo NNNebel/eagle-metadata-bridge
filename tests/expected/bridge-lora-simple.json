@@ -1,3 +1,52 @@
 {
-  "annotation": "[Generation Info]\nCheckpoint: novaAnimeXL_ilV140\nLoRA: hime cut_XL_illustrious_V1.0\n\n[Base Sampler - KSampler]\nSeed: 1111111\nSteps: 30 | CFG: 8.00 | Sampler: euler_ancestral | Scheduler: simple\nPositive: masterpiece, 1girl, basque beret, himecut, pink hair color\nNegative: worst quality, \n\n[Step 2 - KSampler]\nSeed: 222222\nSteps: 20 | CFG: 7.00 | Sampler: euler_ancestral | Scheduler: normal\nPositive:  (ultra-detailed),\nNegative: bad hands"
+  "format": "comfyui",
+  "sampler_fallback": false,
+  "eagle_bridge": {
+    "final_node_id": "20"
+  },
+  "generationSteps": [
+    {
+      "nodeId": "18",
+      "nodeName": "KSampler",
+      "nodeType": "KSampler",
+      "isBase": true,
+      "seed": 1111111,
+      "steps": 30,
+      "cfg": 8,
+      "sampler": "euler_ancestral",
+      "scheduler": "simple",
+      "positive": "masterpiece, 1girl, basque beret, himecut, pink hair color",
+      "negative": "worst quality,",
+      "checkpoint": "novaAnimeXL_ilV140.safetensors",
+      "distance": 1,
+      "stepIndex": 1
+    },
+    {
+      "nodeId": "28",
+      "nodeName": "KSampler",
+      "nodeType": "KSampler",
+      "isBase": false,
+      "seed": 222222,
+      "steps": 20,
+      "cfg": 7,
+      "sampler": "euler_ancestral",
+      "scheduler": "normal",
+      "positive": "(ultra-detailed),",
+      "negative": "bad hands",
+      "checkpoint": "novaAnimeXL_ilV140.safetensors",
+      "distance": 2,
+      "stepIndex": 2
+    }
+  ],
+  "seed": 1111111,
+  "steps": 30,
+  "cfg": 8,
+  "sampler": "euler_ancestral",
+  "scheduler": "simple",
+  "checkpoint": "novaAnimeXL_ilV140.safetensors",
+  "positive": "masterpiece, 1girl, basque beret, himecut, pink hair color\n(ultra-detailed),",
+  "negative": "worst quality,\nbad hands",
+  "loras": [
+    "hime cut_XL_illustrious_V1.0.safetensors"
+  ]
 }

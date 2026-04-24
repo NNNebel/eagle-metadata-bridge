@@ -7,17 +7,26 @@
 !nodes.py
 !executor.py
 !requirements.txt
-!check_metadata.py
 !node_dictionary.json
 !web/
 !web/*.js
+
+# Public-facing files
+!LICENSE
+!README.md
+!CHANGELOG.md
+!assets/
+!assets/*.png
+!assets/*.jpg
+!examples/
+!examples/*.webp
+!examples/*.png
+!examples/*.json
 
 # Allow CI and test infrastructure
 !.github/
 !.github/workflows/
 !.github/workflows/*.yml
-!conftest.py
-!pytest.ini
 !tests/
 !tests/pytest.ini
 !tests/conftest.py
@@ -26,11 +35,12 @@
 !tests/fixtures/
 !tests/fixtures/sample/
 !tests/fixtures/sample/*.json
-# Expected: bridge-*.json contain annotation only (no workflow data) — safe to commit
+# Expected: bridge-*.json are committed as cross-repo contract
 !tests/expected/
 !tests/expected/bridge-*.json
 !tests/expected/sample/
 !tests/expected/sample/*.json
-# Local copy script
+# Scripts
 !scripts/
 !scripts/sync_fixtures.py
+!scripts/check_metadata.py
