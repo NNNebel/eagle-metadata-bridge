@@ -39,7 +39,11 @@ def _load_executor_functions():
     src_path = os.path.join(os.path.dirname(__file__), '..', 'executor.py')
     src = open(src_path, encoding='utf-8').read()
     cutoff = src.index('\n# ---------------------------------------------------------------------------\n# Main execute function')
-    code = "import os, re, json\n" + src[src.index('\ndef _load_node_dictionary'):cutoff]
+    code = (
+        "import os, re, json\n"
+        "from metadata_parser.graph import resolve_link as _resolve_link, "
+        "get_ancestors as _get_ancestors, bfs_distances as _bfs_distances\n"
+    ) + src[src.index('\ndef _load_node_dictionary'):cutoff]
     ns = {'__file__': src_path}
     exec(compile(code, 'executor.py', 'exec'), ns)
     return ns

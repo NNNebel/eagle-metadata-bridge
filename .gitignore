@@ -45,6 +45,15 @@
 !eagle/__init__.py
 !eagle/client.py
 
+# Metadata parser package
+!metadata_parser/
+!metadata_parser/__init__.py
+!metadata_parser/graph.py
+!metadata_parser/sampler_analyzer.py
+!metadata_parser/comfyui_parser.py
+!metadata_parser/tag_generator.py
+!metadata_parser/annotation.py
+
 # Scripts
 !scripts/
 !scripts/sync_fixtures.py
