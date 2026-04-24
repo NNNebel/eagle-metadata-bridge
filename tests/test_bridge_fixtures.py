@@ -35,25 +35,9 @@ except ImportError:
 # Load executor pure functions without triggering ComfyUI imports
 # ---------------------------------------------------------------------------
 
-def _load_executor_functions():
-    src_path = os.path.join(os.path.dirname(__file__), '..', 'executor.py')
-    src = open(src_path, encoding='utf-8').read()
-    cutoff = src.index('\n# ---------------------------------------------------------------------------\n# Main execute function')
-    code = (
-        "import os, re, json\n"
-        "from metadata_parser.comfyui_parser import extract_metadata\n"
-        "from metadata_parser.tag_generator import generate_tags\n"
-        "from metadata_parser.annotation import generate_annotation\n"
-    )
-    # No additional executor.py slice needed — all pure functions are now in submodules
-    ns = {'__file__': src_path}
-    exec(compile(code, 'executor.py', 'exec'), ns)
-    return ns
-
-_fn = _load_executor_functions()
-extract_metadata    = _fn['extract_metadata']
-generate_annotation = _fn['generate_annotation']
-generate_tags       = _fn['generate_tags']
+from metadata_parser.comfyui_parser import extract_metadata
+from metadata_parser.tag_generator import generate_tags
+from metadata_parser.annotation import generate_annotation
 
 # ---------------------------------------------------------------------------
 # Paths
