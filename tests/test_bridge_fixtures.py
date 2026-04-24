@@ -1,22 +1,21 @@
 """
 test_bridge_fixtures.py
 
-Fixture-based tests for executor.py graph traversal and annotation generation.
-Uses real PNG/WebP images from comfyui-auto-tagger as fixtures (no synthetic data).
+Fixture-based tests for metadata extraction (extract_metadata) and
+tag/annotation generation against real ComfyUI images.
 
 Cross-repo contract
 -------------------
-Fixture images (PNG/WebP) and core field expected values live in comfyui-auto-tagger.
-Set COMFYUI_AUTO_TAGGER_PATH in CI to point to the checkout (see .github/workflows/test.yml).
-
-Annotation expected values are Python-specific and live in tests/expected/ here
-(annotation key only — core fields are verified against comfyui-auto-tagger expected).
+All fixture images (PNG/WebP/JPEG) and expected JSON files live in
+comfyui-auto-tagger/tests/fixtures/ and comfyui-auto-tagger/tests/expected/.
+This repo contains no local copies — set COMFYUI_AUTO_TAGGER_PATH to point
+to the comfyui-auto-tagger checkout (defaults to ../../comfyui-auto-tagger).
 
 Counterpart: comfyui-auto-tagger/tests/integration/eagle-bridge-fixtures.integration.test.js
 
 To add a new fixture:
   1. Generate an image via ComfyUI with eagle-metadata-bridge node
-  2. Copy PNG and WebP to comfyui-auto-tagger/tests/fixtures/bridge-<name>.{png,webp}
+  2. Copy PNG/WebP/JPEG to comfyui-auto-tagger/tests/fixtures/bridge-<name>.{png,webp,jpg}
   3. Run analyze-image.js in comfyui-auto-tagger and commit the expected JSON
   4. Add a test case to TEST_CASES below
 """
