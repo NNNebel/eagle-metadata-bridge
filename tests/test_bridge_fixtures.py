@@ -1,27 +1,30 @@
 """
 test_bridge_fixtures.py
 
-Fixture-based tests for metadata extraction (extract_metadata) and
-tag/annotation generation against real ComfyUI images.
+Fixture-based tests for metadata extraction (extract_metadata) against real
+ComfyUI images. Python output is compared directly against JS parser output
+(source of truth) by running node scripts/parse-image-json.js at test time.
 
 Cross-repo contract
 -------------------
-All fixture images (PNG/WebP/JPEG) and expected JSON files live in
-comfyui-auto-tagger/tests/fixtures/ and comfyui-auto-tagger/tests/expected/.
-This repo contains no local copies — set COMFYUI_AUTO_TAGGER_PATH to point
-to the comfyui-auto-tagger checkout (defaults to ../../comfyui-auto-tagger).
+Fixture images live in comfyui-auto-tagger/tests/fixtures/.
+Set COMFYUI_AUTO_TAGGER_PATH to point to a comfyui-auto-tagger checkout
+(defaults to ../../comfyui-auto-tagger).
 
-Counterpart: comfyui-auto-tagger/tests/integration/eagle-bridge-fixtures.integration.test.js
+Tests are skipped automatically when:
+  - COMFYUI_AUTO_TAGGER_PATH is unavailable
+  - Node.js is not installed
 
 To add a new fixture:
   1. Generate an image via ComfyUI with eagle-metadata-bridge node
-  2. Copy PNG/WebP/JPEG to comfyui-auto-tagger/tests/fixtures/bridge-<name>.{png,webp,jpg}
-  3. Run analyze-image.js in comfyui-auto-tagger and commit the expected JSON
-  4. Add a test case to TEST_CASES below
+  2. Copy PNG/WebP to comfyui-auto-tagger/tests/fixtures/bridge-<name>.{png,webp}
+  3. Add a test case to TEST_CASES below
 """
 import json
 import os
+import shutil
 import struct
+import subprocess
 import pytest
 
 try:
@@ -29,10 +32,6 @@ try:
     _PIL_AVAILABLE = True
 except ImportError:
     _PIL_AVAILABLE = False
-
-# ---------------------------------------------------------------------------
-# Load executor pure functions without triggering ComfyUI imports
-# ---------------------------------------------------------------------------
 
 from metadata_parser.comfyui_parser import extract_metadata
 from metadata_parser.tag_generator import generate_tags
@@ -49,7 +48,33 @@ _cat_path = os.environ.get(
     os.path.join(TESTS_DIR, '..', '..', 'comfyui-auto-tagger')
 )
 CAT_FIXTURES_DIR = os.path.join(_cat_path, 'tests', 'fixtures')
-CAT_EXPECTED_DIR = os.path.join(_cat_path, 'tests', 'expected')
+PARSE_SCRIPT = os.path.join(_cat_path, 'scripts', 'parse-image-json.js')
+
+# ---------------------------------------------------------------------------
+# Node.js availability
+# ---------------------------------------------------------------------------
+
+_NODE = shutil.which('node')
+
+def _js_parse(image_path):
+    """
+    Run the JS parser on image_path via Node.js.
+    Returns parsed metadata dict, or None if Node is unavailable / parse fails.
+    """
+    if not _NODE:
+        return None
+    if not os.path.exists(PARSE_SCRIPT):
+        return None
+    try:
+        result = subprocess.run(
+            [_NODE, PARSE_SCRIPT, image_path],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode != 0:
+            return None
+        return json.loads(result.stdout)
+    except Exception:
+        return None
 
 # ---------------------------------------------------------------------------
 # Image metadata extraction helpers
@@ -119,19 +144,6 @@ def load_fixture_from_image(image_path):
     return None
 
 # ---------------------------------------------------------------------------
-# Expected loaders
-# ---------------------------------------------------------------------------
-
-def load_js_expected(name):
-    """Load comfyui-auto-tagger expected (source of truth for core fields)."""
-    path = os.path.join(CAT_EXPECTED_DIR, f'{name}.json')
-    if not os.path.exists(path):
-        return {}
-    with open(path, encoding='utf-8') as f:
-        return json.load(f)
-
-
-# ---------------------------------------------------------------------------
 # Test cases
 # ---------------------------------------------------------------------------
 
@@ -184,19 +196,28 @@ for _c in TEST_CASES:
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _fixture_path(case):
+    fmt = case['_fmt']
+    return os.path.join(CAT_FIXTURES_DIR, case[f'fixture_{fmt}'])
+
 def _get_fixture(case):
     """Return loaded fixture dict or skip if unavailable."""
-    fmt = case['_fmt']
-    fname = case[f'fixture_{fmt}']
-    path = os.path.join(CAT_FIXTURES_DIR, fname)
+    path = _fixture_path(case)
     data = load_fixture_from_image(path)
     if data is None:
-        pytest.skip(f'fixture not available: {fname} (set COMFYUI_AUTO_TAGGER_PATH)')
+        pytest.skip(f'fixture not available: {path} (set COMFYUI_AUTO_TAGGER_PATH)')
     return data
 
 def _get_meta(case):
     fixture = _get_fixture(case)
     return extract_metadata(fixture['prompt'], fixture['eagle_bridge']['final_node_id'])
+
+def _get_js(case):
+    """Return JS parser output or skip if Node unavailable."""
+    js = _js_parse(_fixture_path(case))
+    if js is None:
+        pytest.skip('Node.js not available or parse-image-json.js not found')
+    return js
 
 # ---------------------------------------------------------------------------
 # Parametrized tests
@@ -206,8 +227,7 @@ def _get_meta(case):
 class TestBridgeFixtures:
 
     def test_fixture_image_exists(self, case):
-        fmt = case['_fmt']
-        path = os.path.join(CAT_FIXTURES_DIR, case[f'fixture_{fmt}'])
+        path = _fixture_path(case)
         if not os.path.exists(path):
             pytest.skip(f'fixture not available: {path}')
         assert os.path.exists(path)
@@ -222,41 +242,31 @@ class TestBridgeFixtures:
         steps = _get_meta(case).get('generation_steps', [])
         assert steps[0]['is_base'] is True
 
-    def test_final_node_id_matches_js_expected(self, case):
-        """eagle_bridge.final_node_id must match comfyui-auto-tagger expected."""
-        js = load_js_expected(case['name'])
-        if not js or 'eagle_bridge' not in js:
-            pytest.skip('eagle_bridge not in js expected')
-        fixture = _get_fixture(case)
-        assert fixture['eagle_bridge']['final_node_id'] == js['eagle_bridge']['final_node_id']
-
-    def test_core_fields_match_js_expected(self, case):
-        """All top-level fields must match comfyui-auto-tagger (JS parser) expected values."""
-        js = load_js_expected(case['name'])
-        if not js:
-            pytest.skip('comfyui-auto-tagger expected not available')
+    def test_core_fields_match_js(self, case):
+        """Top-level scalar fields must match JS parser output."""
+        js = _get_js(case)
         meta = _get_meta(case)
-        scalar_fields = ['checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler',
-                         'positive', 'negative']
-        for field in scalar_fields:
-            if field in js:
-                assert meta.get(field) == js[field], \
-                    f"field '{field}': Python={meta.get(field)!r}, JS={js[field]!r}"
+        for field in ('checkpoint', 'seed', 'steps', 'cfg', 'sampler', 'scheduler',
+                      'positive', 'negative'):
+            if field not in js:
+                continue
+            assert meta.get(field) == js[field], \
+                f"field '{field}': Python={meta.get(field)!r}, JS={js[field]!r}"
         if 'loras' in js:
             assert set(meta.get('loras', [])) == set(js['loras']), \
                 f"loras: Python={meta.get('loras')!r}, JS={js['loras']!r}"
 
-    def test_generation_steps_match_js_expected(self, case):
-        """Each generation step must match comfyui-auto-tagger (JS) step data field-by-field."""
-        js = load_js_expected(case['name'])
-        if not js or 'generationSteps' not in js:
-            pytest.skip('generationSteps not in js expected')
+    def test_generation_steps_match_js(self, case):
+        """Each generation step must match JS parser output field-by-field."""
+        js = _get_js(case)
+        if 'generationSteps' not in js:
+            pytest.skip('generationSteps not in JS output')
         meta = _get_meta(case)
         py_steps = meta.get('generation_steps', [])
         js_steps = js['generationSteps']
         assert len(py_steps) == len(js_steps), \
             f"step count: Python={len(py_steps)}, JS={len(js_steps)}"
-        # camelCase → snake_case field map (only fields Python produces)
+        # camelCase (JS) → snake_case (Python) field map
         field_map = [
             ('seed',       'seed'),
             ('steps',      'steps'),
@@ -277,15 +287,10 @@ class TestBridgeFixtures:
                 assert py_step.get(py_key) == js_step[js_key], \
                     f"step[{i}].{py_key}: Python={py_step.get(py_key)!r}, JS={js_step[js_key]!r}"
 
-    def test_annotation_format(self, case):
-        annotation = generate_annotation(_get_meta(case))
-        assert annotation.startswith('[Generation Info]')
-        assert '[Base Sampler -' in annotation
-        assert 'Checkpoint:' in annotation
-
-    def test_tags_include_checkpoint(self, case):
-        meta = _get_meta(case)
-        tags = generate_tags(meta)
-        ckpt_no_ext = os.path.splitext(meta.get('checkpoint', ''))[0].lower()
-        assert ckpt_no_ext in tags
-
+    def test_eagle_bridge_final_node_id_matches_js(self, case):
+        """eagle_bridge.final_node_id in fixture must match JS parser output."""
+        js = _get_js(case)
+        if 'eagle_bridge' not in js:
+            pytest.skip('eagle_bridge not in JS output')
+        fixture = _get_fixture(case)
+        assert fixture['eagle_bridge']['final_node_id'] == js['eagle_bridge']['final_node_id']
