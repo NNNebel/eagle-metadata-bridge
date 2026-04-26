@@ -77,26 +77,6 @@ class EagleMetadataBridge:
                         ),
                     },
                 ),
-                # --- Tag output settings ---
-                "tag_checkpoint": ("BOOLEAN", {"default": True, "tooltip": "タグ: チェックポイント名を含める。"}),
-                "tag_lora": ("BOOLEAN", {"default": True, "tooltip": "タグ: LoRA 名を含める。"}),
-                "tag_positive": ("BOOLEAN", {"default": True, "tooltip": "タグ: ポジティブプロンプトのトークンを含める。"}),
-                "tag_negative": ("BOOLEAN", {"default": True, "tooltip": "タグ: ネガティブプロンプトのトークンを含める（neg: プレフィックス付き）。"}),
-                "tag_seed": ("BOOLEAN", {"default": True, "tooltip": "タグ: seed 値を含める（seed:NNNN）。"}),
-                "tag_steps": ("BOOLEAN", {"default": True, "tooltip": "タグ: ステップ数を含める（steps:NN）。"}),
-                "tag_cfg": ("BOOLEAN", {"default": True, "tooltip": "タグ: CFG スケールを含める（cfg:N.NN）。"}),
-                "tag_sampler": ("BOOLEAN", {"default": True, "tooltip": "タグ: サンプラー名を含める（sampler:name）。"}),
-                "tag_scheduler": ("BOOLEAN", {"default": True, "tooltip": "タグ: スケジューラー名を含める（scheduler:name）。"}),
-                # --- Annotation output settings ---
-                "annotation_checkpoint": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: チェックポイント行を出力する。"}),
-                "annotation_lora": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: LoRA 行を出力する。"}),
-                "annotation_positive": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Positive プロンプト行を出力する。"}),
-                "annotation_negative": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Negative プロンプト行を出力する。"}),
-                "annotation_seed": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Seed 行を出力する。"}),
-                "annotation_steps": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Steps を出力する。"}),
-                "annotation_cfg": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: CFG を出力する。"}),
-                "annotation_sampler": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Sampler を出力する。"}),
-                "annotation_scheduler": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Scheduler を出力する。"}),
             },
             "hidden": {
                 "prompt": "PROMPT",
@@ -110,9 +90,64 @@ class EagleMetadataBridge:
         return executor.execute(**kwargs)
 
 
+class EagleMetadataBridgeTest:
+    """
+    テスト用ノード。config.json を無視して BOOLEAN パラメータを直接使う。
+    「この設定にしたらどういうタグ・アノテーションになるか」を試すためのノード。
+    設定が決まったら config.json に書き移して通常ノードに戻すことを推奨。
+    """
+    RETURN_TYPES = ()
+    FUNCTION = "send_to_eagle"
+    OUTPUT_NODE = True
+    CATEGORY = "Eagle"
+
+    @classmethod
+    def INPUT_TYPES(cls):
+        base = EagleMetadataBridge.INPUT_TYPES()
+        optional = dict(base["optional"])
+        optional.update({
+            # --- Tag output settings ---
+            "tag_checkpoint": ("BOOLEAN", {"default": True, "tooltip": "タグ: チェックポイント名を含める。"}),
+            "tag_lora": ("BOOLEAN", {"default": True, "tooltip": "タグ: LoRA 名を含める。"}),
+            "tag_positive": ("BOOLEAN", {"default": True, "tooltip": "タグ: ポジティブプロンプトのトークンを含める。"}),
+            "tag_negative": ("BOOLEAN", {"default": True, "tooltip": "タグ: ネガティブプロンプトのトークンを含める（neg: プレフィックス付き）。"}),
+            "tag_seed": ("BOOLEAN", {"default": True, "tooltip": "タグ: seed 値を含める（seed:NNNN）。"}),
+            "tag_steps": ("BOOLEAN", {"default": True, "tooltip": "タグ: ステップ数を含める（steps:NN）。"}),
+            "tag_cfg": ("BOOLEAN", {"default": True, "tooltip": "タグ: CFG スケールを含める（cfg:N.NN）。"}),
+            "tag_sampler": ("BOOLEAN", {"default": True, "tooltip": "タグ: サンプラー名を含める（sampler:name）。"}),
+            "tag_scheduler": ("BOOLEAN", {"default": True, "tooltip": "タグ: スケジューラー名を含める（scheduler:name）。"}),
+            # --- Annotation output settings ---
+            "annotation_checkpoint": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: チェックポイント行を出力する。"}),
+            "annotation_lora": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: LoRA 行を出力する。"}),
+            "annotation_positive": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Positive プロンプト行を出力する。"}),
+            "annotation_negative": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Negative プロンプト行を出力する。"}),
+            "annotation_seed": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Seed 行を出力する。"}),
+            "annotation_steps": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Steps を出力する。"}),
+            "annotation_cfg": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: CFG を出力する。"}),
+            "annotation_sampler": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Sampler を出力する。"}),
+            "annotation_scheduler": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: Scheduler を出力する。"}),
+        })
+        return {**base, "optional": optional}
+
+    def send_to_eagle(self, **kwargs):
+        importlib.reload(executor)
+        # BOOLEAN パラメータから settings dict を組み立て、config.json を上書き
+        _keys = ["checkpoint", "lora", "positive", "negative",
+                 "seed", "steps", "cfg", "sampler", "scheduler"]
+        tag_settings = {k: kwargs.pop(f"tag_{k}", True) for k in _keys}
+        ann_settings = {k: kwargs.pop(f"annotation_{k}", True) for k in _keys}
+        return executor.execute(
+            _settings_override_tag=tag_settings,
+            _settings_override_annotation=ann_settings,
+            **kwargs,
+        )
+
+
 NODE_CLASS_MAPPINGS = {
     "EagleMetadataBridge": EagleMetadataBridge,
+    "EagleMetadataBridgeTest": EagleMetadataBridgeTest,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     "EagleMetadataBridge": "Eagle Metadata Bridge",
+    "EagleMetadataBridgeTest": "Eagle Metadata Bridge (Test)",
 }

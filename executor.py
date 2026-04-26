@@ -164,15 +164,37 @@ def _expand_path_expr(path_str, prompt, extra_pnginfo, now=None):
 # Main execute function
 # ---------------------------------------------------------------------------
 
+_ALL_SETTING_KEYS = [
+    "checkpoint", "lora", "positive", "negative",
+    "seed", "steps", "cfg", "sampler", "scheduler",
+]
+
+
+def _load_config():
+    """Load config.json from the node directory. Returns {} if missing or invalid."""
+    path = os.path.join(os.path.dirname(__file__), "config.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def _config_to_settings(config, key):
+    """
+    Convert a config section ("tag" or "annotation") to a settings dict.
+    Omitted keys default to True. Returns None (= all ON) if section is absent.
+    """
+    section = config.get(key)
+    if not section:
+        return None
+    return {k: bool(section.get(k, True)) for k in _ALL_SETTING_KEYS}
+
+
 def execute(images, filename_prefix, eagle_folder_path="",
             tags="", format="PNG", compress_level=4, quality=85,
             preview=True, local_save_path="",
-            tag_checkpoint=True, tag_lora=True, tag_positive=True, tag_negative=True,
-            tag_seed=True, tag_steps=True, tag_cfg=True, tag_sampler=True, tag_scheduler=True,
-            annotation_checkpoint=True, annotation_lora=True,
-            annotation_positive=True, annotation_negative=True,
-            annotation_seed=True, annotation_steps=True, annotation_cfg=True,
-            annotation_sampler=True, annotation_scheduler=True,
+            _settings_override_tag=None, _settings_override_annotation=None,
             prompt=None, extra_pnginfo=None, unique_id=None):
 
     is_png = format == "PNG"
@@ -196,18 +218,9 @@ def execute(images, filename_prefix, eagle_folder_path="",
     )
 
     # Extract metadata from graph for auto-tagging
-    tag_settings = {
-        "checkpoint": tag_checkpoint, "lora": tag_lora,
-        "positive": tag_positive, "negative": tag_negative,
-        "seed": tag_seed, "steps": tag_steps, "cfg": tag_cfg,
-        "sampler": tag_sampler, "scheduler": tag_scheduler,
-    }
-    annotation_settings = {
-        "checkpoint": annotation_checkpoint, "lora": annotation_lora,
-        "positive": annotation_positive, "negative": annotation_negative,
-        "seed": annotation_seed, "steps": annotation_steps, "cfg": annotation_cfg,
-        "sampler": annotation_sampler, "scheduler": annotation_scheduler,
-    }
+    cfg_data = _load_config()
+    tag_settings = _settings_override_tag or _config_to_settings(cfg_data, "tag")
+    annotation_settings = _settings_override_annotation or _config_to_settings(cfg_data, "annotation")
 
     auto_meta = {}
     auto_tags = []
