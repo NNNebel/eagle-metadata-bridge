@@ -37,7 +37,9 @@ _DEFAULT_SETTINGS = {
     "cfg": True,
     "sampler": True,
     "scheduler": True,
-    "include_all_samplers": False,
+    # Note: include_all_samplers is a JS-only concept.
+    # Python generate_tags() reads top-level fields (populated from base sampler
+    # by comfyui_parser) so multi-sampler filtering is handled at parse time.
 }
 
 

@@ -5,6 +5,11 @@ Corresponds to AnnotationBuilder.js on the JS side.
 import os
 
 
+def _basename_no_ext(path):
+    """Extract filename without extension (no path prefix). Same helper as tag_generator."""
+    return os.path.splitext(os.path.basename(path))[0]
+
+
 def _step_label(step):
     node_type = step.get("node_type", "Sampler")
     node_id   = step.get("node_id", "")
@@ -43,7 +48,7 @@ def generate_annotation(meta, settings=None):
 
     global_ckpt = None
     if _setting(settings, "checkpoint") and meta.get("checkpoint"):
-        global_ckpt = os.path.splitext(meta["checkpoint"])[0]
+        global_ckpt = _basename_no_ext(meta["checkpoint"])
         lines.append(f"Checkpoint: {global_ckpt}")
 
     # Always output LoRA line when loras key exists (even empty list)
@@ -55,13 +60,15 @@ def generate_annotation(meta, settings=None):
     single_step = len(steps) == 1
 
     if steps:
-        for i, step in enumerate(steps):
-            # Build step content first; only emit the label if something will appear
+        # Build all step blocks first; emit separator only when something will appear
+        # (mirrors JS AnnotationBuilder._buildStepContent / stepBlocks logic)
+        step_blocks = []
+        for step in steps:
             step_lines = []
 
             # Show checkpoint in step when: only one step, or step ckpt differs from global
             if _setting(settings, "checkpoint"):
-                step_ckpt = os.path.splitext(step["checkpoint"])[0] if step.get("checkpoint") else None
+                step_ckpt = _basename_no_ext(step["checkpoint"]) if step.get("checkpoint") else None
                 if step_ckpt and (single_step or step_ckpt != global_ckpt):
                     step_lines.append(f"Checkpoint: {step_ckpt}")
 
@@ -84,9 +91,15 @@ def generate_annotation(meta, settings=None):
                 step_lines.append(f"Negative: {step['negative']}")
 
             if step_lines:
+                step_blocks.append([_step_label(step)] + step_lines)
+
+        if step_blocks:
+            if len(lines) > 1:  # header has content beyond [Generation Info]
                 lines.append("")
-                lines.append(_step_label(step))
-                lines.extend(step_lines)
+            for i, block in enumerate(step_blocks):
+                lines.extend(block)
+                if i < len(step_blocks) - 1:
+                    lines.append("")
     else:
         # Fallback: no generation_steps — build content first, emit only if non-empty
         fallback_lines = []
@@ -104,9 +117,9 @@ def generate_annotation(meta, settings=None):
         if params:
             fallback_lines.append(" | ".join(params))
         if _setting(settings, "positive") and meta.get("positive"):
-            fallback_lines.append(f"Positive: {meta['positive']}")
+            fallback_lines.extend(["", "[Positive Prompt]", meta["positive"]])
         if _setting(settings, "negative") and meta.get("negative"):
-            fallback_lines.append(f"Negative: {meta['negative']}")
+            fallback_lines.extend(["", "[Negative Prompt]", meta["negative"]])
         if fallback_lines:
             lines.append("")
             lines.extend(fallback_lines)
