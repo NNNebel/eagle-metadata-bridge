@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-04-26
+
+### 🇬🇧 English
+#### 🎉 New Features
+- **Per-field output control via `config.json`**: Each tag and annotation field (checkpoint, LoRA, positive, negative, seed, steps, CFG, sampler, scheduler) can now be individually enabled or disabled in `config.json`. Changes take effect on the next execution — no ComfyUI restart required.
+- **Eagle Metadata Bridge (Test) node**: A companion node with 18 individual ON/OFF toggles for every tag and annotation field. Ignores `config.json`, making it easy to preview how different settings affect the output before committing them to the file.
+
+#### 🐛 Bug Fixes
+- Fixed `scheduler` tag not being generated even when enabled in settings.
+- Fixed annotation output being incorrect when all fields for a sampler step were disabled.
+- Fixed edge cases where zero values for generation parameters (seed, steps, CFG) were not included in tags and annotations.
+
+### 🇯🇵 日本語
+#### 🎉 新機能
+- **`config.json` によるフィールド別出力制御**: タグ・アノテーションの各フィールド（checkpoint・LoRA・positive・negative・seed・steps・CFG・sampler・scheduler）を `config.json` で個別に ON/OFF できるようになった。変更は次回実行時に反映され、ComfyUI の再起動は不要。
+- **Eagle Metadata Bridge (Test) ノード**: タグ・アノテーションの全フィールドを個別にトグルできるノードを追加。`config.json` を無視するため、設定をファイルに書き込む前に出力を手軽に確認できる。
+
+#### 🐛 バグ修正
+- `scheduler` タグが設定で有効にしていても生成されていなかった不具合を修正。
+- サンプラーステップのすべてのフィールドが無効の場合にアノテーション出力が不正になっていた不具合を修正。
+- seed・steps・CFG が 0 のときにタグ・アノテーションに含まれないことがあった不具合を修正。
+
+---
+
 ## [1.0.0] - 2026-04-24
 
 ### 🇬🇧 English
