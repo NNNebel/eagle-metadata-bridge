@@ -224,6 +224,65 @@ class TestGenerateAnnotation:
         assert "Seed: 100" in ann
         assert "Seed: 200" in ann
 
+    # ------------------------------------------------------------------
+    # Boundary values
+    # ------------------------------------------------------------------
+
+    def test_steps_zero_in_step(self):
+        """steps=0 は有効な値として出力されること。"""
+        meta = _simple_meta()
+        meta["generation_steps"][0]["steps"] = 0
+        ann = generate_annotation(meta)
+        assert "Steps: 0" in ann
+
+    def test_cfg_zero_in_step(self):
+        """cfg=0 は有効な値として出力されること。"""
+        meta = _simple_meta()
+        meta["generation_steps"][0]["cfg"] = 0
+        ann = generate_annotation(meta)
+        assert "CFG: 0.0" in ann
+
+    def test_steps_zero_in_fallback(self):
+        """fallback パスでも steps=0 が出力されること。"""
+        meta = {"generation_steps": [], "seed": 1, "steps": 0, "cfg": 7.0, "sampler": "euler"}
+        ann = generate_annotation(meta)
+        assert "Steps: 0" in ann
+
+    def test_cfg_zero_in_fallback(self):
+        """fallback パスでも cfg=0 が出力されること。"""
+        meta = {"generation_steps": [], "seed": 1, "steps": 20, "cfg": 0, "sampler": "euler"}
+        ann = generate_annotation(meta)
+        assert "CFG: 0.0" in ann
+
+    def test_checkpoint_path_stripped_in_annotation(self):
+        """checkpoint にパスが含まれていても basename のみが出力されること。"""
+        meta = _simple_meta({"checkpoint": "models/sd/myModel_v10.safetensors"})
+        meta["generation_steps"][0]["checkpoint"] = "models/sd/myModel_v10.safetensors"
+        ann = generate_annotation(meta)
+        assert "Checkpoint: myModel_v10" in ann
+        assert "models/" not in ann
+
+    def test_blank_line_before_step_when_header_has_content(self):
+        """ヘッダーに内容がある場合、最初のステップの前に空行が入ること。"""
+        ann = generate_annotation(_simple_meta())
+        lines = ann.split("\n")
+        step_idx = next(i for i, l in enumerate(lines) if l.startswith("[Base Sampler"))
+        assert lines[step_idx - 1] == ""
+
+    def test_no_blank_line_before_step_when_header_empty(self):
+        """checkpoint=off, lora=off の場合、ステップ前に余分な空行が入らないこと。"""
+        ann = generate_annotation(_simple_meta(), {"checkpoint": False, "lora": False,
+                                                    "seed": True, "steps": True, "cfg": True,
+                                                    "sampler": True, "scheduler": True,
+                                                    "positive": True, "negative": True})
+        lines = ann.split("\n")
+        assert lines[0] == "[Generation Info]"
+        assert lines[1] != ""  # no blank line between header and first step
+
+    # ------------------------------------------------------------------
+    # Fallback positive/negative format
+    # ------------------------------------------------------------------
+
     def test_no_generation_steps_fallback(self):
         meta = {
             "checkpoint": "model.safetensors",
@@ -234,12 +293,19 @@ class TestGenerateAnnotation:
             "cfg": 5.0,
             "sampler": "euler",
             "scheduler": "normal",
-            "positive": "test",
-            "negative": None,
+            "positive": "test prompt",
+            "negative": "bad quality",
         }
         ann = generate_annotation(meta)
-        assert "Seed: 1" in ann
-        assert "CFG: 5.0" in ann
+        lines = ann.split("\n")
+        # positive: blank line + [Positive Prompt] header + text
+        pos_idx = lines.index("[Positive Prompt]")
+        assert lines[pos_idx - 1] == ""
+        assert lines[pos_idx + 1] == "test prompt"
+        # negative: blank line + [Negative Prompt] header + text
+        neg_idx = lines.index("[Negative Prompt]")
+        assert lines[neg_idx - 1] == ""
+        assert lines[neg_idx + 1] == "bad quality"
 
     def test_no_generation_steps_all_off_header_only(self):
         """フォールバックブロックで全フィールド off → ヘッダーだけ残ること（空行なし）。"""
@@ -391,6 +457,73 @@ _TAG_COVERAGE_CASES = [
     ("scheduler",  {"scheduler": "karras", "generation_steps": []},
      "scheduler:karras"),
 ]
+
+
+_STEP = {
+    "node_id": "1", "node_type": "KSampler", "is_base": True,
+    "step_index": 1, "distance": 1,
+    "checkpoint": "myModel.safetensors",
+    "seed": 99, "steps": 25, "cfg": 6.5,
+    "sampler": "euler", "scheduler": "karras",
+    "positive": "masterpiece", "negative": "bad quality",
+}
+
+_ANN_COVERAGE_CASES = [
+    # (key, meta, expected_fragment)
+    # generationSteps path
+    ("checkpoint", {"checkpoint": "myModel.safetensors", "loras": [], "generation_steps": [_STEP]},
+     "Checkpoint: myModel"),
+    ("lora",       {"checkpoint": None, "loras": ["myLora.safetensors"], "generation_steps": [_STEP]},
+     "LoRA: myLora"),
+    ("seed",       {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "Seed: 99"),
+    ("steps",      {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "Steps: 25"),
+    ("cfg",        {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "CFG: 6.5"),
+    ("sampler",    {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "Sampler: euler"),
+    ("scheduler",  {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "Scheduler: karras"),
+    ("positive",   {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "Positive: masterpiece"),
+    ("negative",   {"checkpoint": None, "loras": [], "generation_steps": [_STEP]},
+     "Negative: bad quality"),
+    # fallback path (generation_steps empty)
+    ("seed",       {"checkpoint": None, "loras": [], "generation_steps": [],
+                    "seed": 99, "steps": 25, "cfg": 6.5, "sampler": "euler", "scheduler": "karras"},
+     "Seed: 99"),
+    ("scheduler",  {"checkpoint": None, "loras": [], "generation_steps": [],
+                    "seed": 1, "scheduler": "karras"},
+     "Scheduler: karras"),
+    ("positive",   {"checkpoint": None, "loras": [], "generation_steps": [],
+                    "seed": 1, "positive": "masterpiece"},
+     "[Positive Prompt]"),
+    ("negative",   {"checkpoint": None, "loras": [], "generation_steps": [],
+                    "seed": 1, "negative": "bad quality"},
+     "[Negative Prompt]"),
+]
+
+_ANN_COVERAGE_IDS = [
+    f"{key}-{'step' if meta.get('generation_steps') else 'fallback'}"
+    for key, meta, _ in _ANN_COVERAGE_CASES
+]
+
+
+class TestAnnotationSettingsCoverage:
+    """Each settings key must produce expected text when ON and suppress it when OFF."""
+
+    @pytest.mark.parametrize("key,meta,fragment", _ANN_COVERAGE_CASES, ids=_ANN_COVERAGE_IDS)
+    def test_on_produces_output(self, key, meta, fragment):
+        ann = generate_annotation(meta, {key: True})
+        assert fragment in ann, \
+            f"setting '{key}' ON: expected '{fragment}' in annotation, got:\n{ann}"
+
+    @pytest.mark.parametrize("key,meta,fragment", _ANN_COVERAGE_CASES, ids=_ANN_COVERAGE_IDS)
+    def test_off_suppresses_output(self, key, meta, fragment):
+        ann = generate_annotation(meta, {key: False})
+        assert fragment not in ann, \
+            f"setting '{key}' OFF: unexpected '{fragment}' in annotation:\n{ann}"
 
 
 class TestTagSettingsCoverage:
