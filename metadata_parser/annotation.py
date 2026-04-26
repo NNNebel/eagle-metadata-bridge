@@ -66,10 +66,9 @@ def generate_annotation(meta, settings=None):
         for step in steps:
             step_lines = []
 
-            # Show checkpoint in step when: only one step, or step ckpt differs from global
             if _setting(settings, "checkpoint"):
                 step_ckpt = _basename_no_ext(step["checkpoint"]) if step.get("checkpoint") else None
-                if step_ckpt and (single_step or step_ckpt != global_ckpt):
+                if step_ckpt:
                     step_lines.append(f"Checkpoint: {step_ckpt}")
 
             if _setting(settings, "seed") and step.get("seed") is not None:

@@ -155,6 +155,45 @@ class TestGenerateTags:
         tags = generate_tags(meta)
         assert "seed:0" in tags
 
+    def test_checkpoint_tags_from_each_step(self):
+        """複数ステップで異なるモデルを使う場合、両方のモデル名がタグになること。"""
+        meta = {
+            "checkpoint": "modelA.safetensors",
+            "loras": [],
+            "generation_steps": [
+                {"node_id": "1", "is_base": True, "checkpoint": "modelA.safetensors", "seed": 1},
+                {"node_id": "2", "is_base": False, "checkpoint": "modelB.safetensors", "seed": 2},
+            ],
+        }
+        tags = generate_tags(meta)
+        assert "modela" in tags
+        assert "modelb" in tags
+
+    def test_checkpoint_tags_deduplicated_across_steps(self):
+        """複数ステップで同じモデルを使う場合、タグが重複しないこと。"""
+        meta = {
+            "checkpoint": "sameModel.safetensors",
+            "loras": [],
+            "generation_steps": [
+                {"node_id": "1", "is_base": True, "checkpoint": "sameModel.safetensors", "seed": 1},
+                {"node_id": "2", "is_base": False, "checkpoint": "sameModel.safetensors", "seed": 2},
+            ],
+        }
+        tags = generate_tags(meta)
+        assert tags.count("samemodel") == 1
+
+    def test_no_checkpoint_tag_when_steps_have_no_checkpoint(self):
+        """generationSteps はあるが checkpoint フィールドがない場合、タグなし。"""
+        meta = {
+            "checkpoint": "global.safetensors",
+            "loras": [],
+            "generation_steps": [
+                {"node_id": "1", "is_base": True, "seed": 1},
+            ],
+        }
+        tags = generate_tags(meta)
+        assert not any("global" in t for t in tags)
+
 
 # ---------------------------------------------------------------------------
 # generate_annotation
@@ -194,19 +233,20 @@ class TestGenerateAnnotation:
         ann = generate_annotation(_multi_meta())
         assert "[Step 2 - KSampler (ID: 20)]" in ann
 
-    def test_single_step_checkpoint_in_block(self):
-        # Single-step: Checkpoint must appear both at top AND inside the step block
+    def test_checkpoint_in_step_block(self):
+        # Checkpoint always appears inside each step block
         ann = generate_annotation(_simple_meta())
         lines = ann.split("\n")
-        ckpt_lines = [i for i, l in enumerate(lines) if "Checkpoint: myModel_v10" in l]
-        assert len(ckpt_lines) == 2, f"Expected 2 Checkpoint lines, got {ckpt_lines}: {ann}"
+        ckpt_lines = [l for l in lines if "Checkpoint: myModel_v10" in l]
+        assert len(ckpt_lines) >= 1
 
-    def test_multi_step_checkpoint_not_repeated_when_same(self):
-        # Multi-step with same checkpoint: appears only at top, not in each step
+    def test_multi_step_checkpoint_in_each_step(self):
+        # Multi-step: checkpoint appears in each step block regardless of duplication
         ann = generate_annotation(_multi_meta())
         lines = ann.split("\n")
         ckpt_lines = [l for l in lines if "Checkpoint: model" in l]
-        assert len(ckpt_lines) == 1
+        # top-level + 2 step blocks = 3 lines
+        assert len(ckpt_lines) == 3
 
     def test_cfg_one_decimal_place(self):
         ann = generate_annotation(_simple_meta())

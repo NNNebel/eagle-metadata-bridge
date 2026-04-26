@@ -60,8 +60,18 @@ def generate_tags(meta, settings=None):
     """
     tags = []
 
-    if _setting(settings, "checkpoint") and meta.get("checkpoint"):
-        tags.append(_basename_no_ext(meta["checkpoint"]))
+    if _setting(settings, "checkpoint"):
+        steps = meta.get("generation_steps") or []
+        if steps:
+            seen = set()
+            for step in steps:
+                if step.get("checkpoint"):
+                    ckpt = _basename_no_ext(step["checkpoint"])
+                    if ckpt not in seen:
+                        tags.append(ckpt)
+                        seen.add(ckpt)
+        elif meta.get("checkpoint"):
+            tags.append(_basename_no_ext(meta["checkpoint"]))
 
     if _setting(settings, "lora"):
         for lora in meta.get("loras") or []:

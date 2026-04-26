@@ -17,6 +17,37 @@ def _extract_filename(path):
 from metadata_parser.sampler_analyzer import NODE_DICT, is_sampler_node, extract_sampler_step
 
 
+def _find_checkpoint_for_sampler(prompt, sampler_nid):
+    """BFS from sampler node through all parent connections to find its checkpoint loader."""
+    visited = set()
+    queue = [str(sampler_nid)]
+    while queue:
+        current_id = queue.pop(0)
+        if current_id in visited:
+            continue
+        visited.add(current_id)
+        node = prompt.get(current_id)
+        if not node:
+            continue
+        class_type = node.get("class_type", "")
+        inputs = node.get("inputs") or {}
+        node_def = NODE_DICT.get(class_type, {})
+        if node_def.get("type") == "checkpoint_loader":
+            ckpt = resolve_link(prompt, current_id, node_def["input_key"])
+            if ckpt:
+                return _extract_filename(ckpt)
+        elif not node_def and "CheckpointLoader" in class_type:
+            ckpt = resolve_link(prompt, current_id, "ckpt_name")
+            if ckpt:
+                return _extract_filename(ckpt)
+        for val in inputs.values():
+            if isinstance(val, list) and len(val) == 2 and isinstance(val[0], (int, str)):
+                parent_id = str(val[0])
+                if parent_id not in visited:
+                    queue.append(parent_id)
+    return None
+
+
 def extract_metadata(prompt, final_node_id):
     """
     Traverse the ComfyUI prompt graph from final_node_id and extract
@@ -102,7 +133,7 @@ def extract_metadata(prompt, final_node_id):
     for i, step in enumerate(sampler_nodes):
         step["is_base"] = (i == 0)
         step["step_index"] = i + 1
-        step["checkpoint"] = meta["checkpoint"]
+        step["checkpoint"] = _find_checkpoint_for_sampler(prompt, step["node_id"]) or meta["checkpoint"]
 
     meta["generation_steps"] = sampler_nodes
 

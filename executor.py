@@ -297,9 +297,11 @@ def execute(images, filename_prefix, eagle_folder_path="",
 
         _file_name = f"{_expanded_prefix}_{counter + batch_idx:05d}{ext}"
 
-        # 1. Determine save location for Eagle upload
-        # If use_local_path is set, save to that custom directory.
-        # Otherwise, use ComfyUI's standard full_output_folder (we will delete it later).
+        # 1. Determine save location
+        # local_save_path specified: save permanently to that directory, pass to Eagle.
+        # No local_save_path: save to ComfyUI temp dir so Eagle can read it without a
+        # race condition (Eagle processes addFromPath asynchronously on some formats,
+        # e.g. JPEG, so deleting from output right after the API call causes ENOENT).
         if use_local_path:
             try:
                 os.makedirs(_expanded_local_dir, exist_ok=True)
@@ -307,8 +309,11 @@ def execute(images, filename_prefix, eagle_folder_path="",
             except Exception as e:
                 print(f"[EagleMetadataBridge] Failed to create local directory: {e}")
                 abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
+            eagle_path = abs_path
         else:
-            abs_path = os.path.abspath(os.path.join(full_output_folder, _file_name))
+            comfy_temp_dir = folder_paths.get_temp_directory()
+            abs_path = os.path.join(comfy_temp_dir, _file_name)
+            eagle_path = abs_path
 
         file = os.path.basename(abs_path)
 
@@ -324,7 +329,6 @@ def execute(images, filename_prefix, eagle_folder_path="",
                     pnginfo.add_text("eagle_bridge", json.dumps({"version": 1, "final_node_id": str(unique_id)}))
                 img.save(path, pnginfo=pnginfo, compress_level=compress_level)
             elif is_jpeg:
-                # JPEG: EXIF APP1 with TIFF IFD (matches ComfyUI SaveImage JPEG format)
                 exif_entries = []
                 workflow = (extra_pnginfo or {}).get('workflow')
                 if workflow is not None:
@@ -347,14 +351,13 @@ def execute(images, filename_prefix, eagle_folder_path="",
                 exif_bytes = _build_webp_exif(exif_entries) if exif_entries else None
                 img.save(path, format="WEBP", quality=quality, exif=exif_bytes)
 
-        # Save primary image (for Eagle)
         _save_image(abs_path)
-        print(f"[EagleMetadataBridge] Saved for Eagle: {abs_path}")
+        print(f"[EagleMetadataBridge] Saved: {abs_path}")
 
         # Send to Eagle
         payload = {
-            "path": abs_path,
-            "name": os.path.basename(abs_path),
+            "path": eagle_path,
+            "name": os.path.basename(eagle_path),
             "tags": merged_tags,
             "annotation": auto_annotation,
         }
@@ -372,27 +375,14 @@ def execute(images, filename_prefix, eagle_folder_path="",
         except Exception as e:
             print(f"[EagleMetadataBridge] Eagle connection failed: {e}")
 
-        # 2. Handle UI Preview (Following ComfyUI standard: use temp folder)
+        # 2. Handle UI Preview
         if preview:
             if use_local_path:
-                # If we saved it permanently, we can just point to it (though UI prefers output/temp)
-                # To be safe and follow convention, we use 'output' type if it's in output folder
                 preview_items.append({"filename": file, "subfolder": subfolder, "type": "output"})
             else:
-                # Save a copy to ComfyUI's native temp directory for UI display
-                # This ensures frontend 'stat' and loading work correctly
-                comfy_temp_dir = folder_paths.get_temp_directory()
-                comfy_temp_path = os.path.join(comfy_temp_dir, _file_name)
-                img.save(comfy_temp_path)
+                # abs_path is already in temp dir — reuse it for preview
                 preview_items.append({"filename": _file_name, "subfolder": "", "type": "temp"})
 
-        # 3. Cleanup: If NOT saving locally, delete the temporary file in output_dir
-        if not use_local_path and os.path.exists(abs_path):
-            try:
-                os.remove(abs_path)
-                print(f"[EagleMetadataBridge] Cleaned up temporary output file: {abs_path}")
-            except Exception as e:
-                print(f"[EagleMetadataBridge] Failed to delete temp file {abs_path}: {e}")
     if preview:
         return {"ui": {"images": preview_items}}
     return {"ui": {"images": []}}

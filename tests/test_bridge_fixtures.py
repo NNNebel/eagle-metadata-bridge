@@ -184,6 +184,12 @@ TEST_CASES = [
         'fixture_webp': 'bridge-i2i.webp',
         'label': 'DetailerForEachDebug (ADetailer), novaAnimeXL',
     },
+    {
+        'name': 'bridge-various-model',
+        'fixture_png': 'bridge-various-model.png',
+        'fixture_webp': 'bridge-various-model.webp',
+        'label': 'multi-sampler workflow with different checkpoint per step',
+    },
 ]
 
 # Expand into per-image test cases (PNG + WebP)
