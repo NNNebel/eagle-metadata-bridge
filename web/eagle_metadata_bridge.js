@@ -21,7 +21,8 @@ function showWidget(node, widget) {
 app.registerExtension({
   name: "EagleMetadataBridge.ConditionalWidgets",
   async nodeCreated(node) {
-    if (node.comfyClass !== "EagleMetadataBridge") return;
+    const targetClasses = ["EagleMetadataBridge", "EagleMetadataBridgeTest"];
+    if (!targetClasses.includes(node.comfyClass)) return;
 
     const get = (name) => node.widgets?.find(w => w.name === name);
 
