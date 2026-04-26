@@ -14,19 +14,40 @@ def _step_label(step):
     return f"[Step {step['step_index']} - {label}]"
 
 
-def generate_annotation(meta):
+_DEFAULT_SETTINGS = {
+    "checkpoint": True,
+    "lora": True,
+    "positive": True,
+    "negative": True,
+    "seed": True,
+    "steps": True,
+    "cfg": True,
+    "sampler": True,
+    "scheduler": True,
+}
+
+
+def _setting(settings, key):
+    if settings is None:
+        return _DEFAULT_SETTINGS.get(key, True)
+    return settings.get(key, _DEFAULT_SETTINGS.get(key, True))
+
+
+def generate_annotation(meta, settings=None):
     """
-    Generate annotation matching comfyui-auto-tagger with all output settings enabled.
+    Generate annotation matching comfyui-auto-tagger.
+    settings: dict of boolean flags controlling which fields appear.
+              None means all enabled (default behaviour).
     """
     lines = ["[Generation Info]"]
 
     global_ckpt = None
-    if meta.get("checkpoint"):
+    if _setting(settings, "checkpoint") and meta.get("checkpoint"):
         global_ckpt = os.path.splitext(meta["checkpoint"])[0]
         lines.append(f"Checkpoint: {global_ckpt}")
 
     # Always output LoRA line when loras key exists (even empty list)
-    if meta.get("loras") is not None:
+    if _setting(settings, "lora") and meta.get("loras") is not None:
         lora_names = [os.path.splitext(l)[0] for l in meta["loras"]]
         lines.append("LoRA: " + ", ".join(lora_names))
 
@@ -39,46 +60,47 @@ def generate_annotation(meta):
             lines.append(_step_label(step))
 
             # Show checkpoint in step when: only one step, or step ckpt differs from global
-            step_ckpt = os.path.splitext(step["checkpoint"])[0] if step.get("checkpoint") else None
-            if step_ckpt and (single_step or step_ckpt != global_ckpt):
-                lines.append(f"Checkpoint: {step_ckpt}")
+            if _setting(settings, "checkpoint"):
+                step_ckpt = os.path.splitext(step["checkpoint"])[0] if step.get("checkpoint") else None
+                if step_ckpt and (single_step or step_ckpt != global_ckpt):
+                    lines.append(f"Checkpoint: {step_ckpt}")
 
-            if step.get("seed") is not None:
+            if _setting(settings, "seed") and step.get("seed") is not None:
                 lines.append(f"Seed: {step['seed']}")
             params = []
-            if step.get("steps") is not None:
+            if _setting(settings, "steps") and step.get("steps") is not None:
                 params.append(f"Steps: {step['steps']}")
-            if step.get("cfg") is not None:
+            if _setting(settings, "cfg") and step.get("cfg") is not None:
                 params.append(f"CFG: {float(step['cfg']):.1f}")
-            if step.get("sampler"):
+            if _setting(settings, "sampler") and step.get("sampler"):
                 params.append(f"Sampler: {step['sampler']}")
-            if step.get("scheduler"):
+            if _setting(settings, "scheduler") and step.get("scheduler"):
                 params.append(f"Scheduler: {step['scheduler']}")
             if params:
                 lines.append(" | ".join(params))
-            if step.get("positive"):
+            if _setting(settings, "positive") and step.get("positive"):
                 lines.append(f"Positive: {step['positive']}")
-            if step.get("negative"):
+            if _setting(settings, "negative") and step.get("negative"):
                 lines.append(f"Negative: {step['negative']}")
     else:
         # Fallback: no generation_steps
         lines.append("")
-        if meta.get("seed") is not None:
+        if _setting(settings, "seed") and meta.get("seed") is not None:
             lines.append(f"Seed: {meta['seed']}")
         params = []
-        if meta.get("steps") is not None:
+        if _setting(settings, "steps") and meta.get("steps") is not None:
             params.append(f"Steps: {meta['steps']}")
-        if meta.get("cfg") is not None:
+        if _setting(settings, "cfg") and meta.get("cfg") is not None:
             params.append(f"CFG: {float(meta['cfg']):.1f}")
-        if meta.get("sampler"):
+        if _setting(settings, "sampler") and meta.get("sampler"):
             params.append(f"Sampler: {meta['sampler']}")
-        if meta.get("scheduler"):
+        if _setting(settings, "scheduler") and meta.get("scheduler"):
             params.append(f"Scheduler: {meta['scheduler']}")
         if params:
             lines.append(" | ".join(params))
-        if meta.get("positive"):
+        if _setting(settings, "positive") and meta.get("positive"):
             lines.append(f"Positive: {meta['positive']}")
-        if meta.get("negative"):
+        if _setting(settings, "negative") and meta.get("negative"):
             lines.append(f"Negative: {meta['negative']}")
 
     return "\n".join(lines)

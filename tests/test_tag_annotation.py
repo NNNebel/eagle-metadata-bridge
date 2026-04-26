@@ -240,3 +240,85 @@ class TestGenerateAnnotation:
         ann = generate_annotation(meta)
         assert "Seed: 1" in ann
         assert "CFG: 5.0" in ann
+
+
+# ---------------------------------------------------------------------------
+# Settings (customisation) tests
+# ---------------------------------------------------------------------------
+
+class TestTagGeneratorSettings:
+
+    def test_default_settings_same_as_none(self):
+        meta = _simple_meta()
+        assert generate_tags(meta) == generate_tags(meta, None)
+
+    def test_checkpoint_off(self):
+        tags = generate_tags(_simple_meta(), {"checkpoint": False})
+        assert not any("mymodel" in t for t in tags)
+
+    def test_lora_off(self):
+        meta = _simple_meta({"loras": ["myLora.safetensors"]})
+        tags = generate_tags(meta, {"lora": False})
+        assert not any("mylora" in t for t in tags)
+
+    def test_positive_off(self):
+        tags = generate_tags(_simple_meta(), {"positive": False})
+        assert "1girl" not in tags
+        assert "simple background" not in tags
+
+    def test_negative_off(self):
+        tags = generate_tags(_simple_meta(), {"negative": False})
+        assert not any(t.startswith("neg:") for t in tags)
+
+    def test_seed_off(self):
+        tags = generate_tags(_simple_meta(), {"seed": False})
+        assert not any(t.startswith("seed:") for t in tags)
+
+    def test_cfg_off(self):
+        tags = generate_tags(_simple_meta(), {"cfg": False})
+        assert not any(t.startswith("cfg:") for t in tags)
+
+    def test_all_off_empty(self):
+        settings = {k: False for k in
+                    ["checkpoint", "lora", "positive", "negative",
+                     "seed", "steps", "cfg", "sampler", "scheduler"]}
+        assert generate_tags(_simple_meta(), settings) == []
+
+
+class TestAnnotationSettings:
+
+    def test_default_settings_same_as_none(self):
+        meta = _simple_meta()
+        assert generate_annotation(meta) == generate_annotation(meta, None)
+
+    def test_checkpoint_off(self):
+        ann = generate_annotation(_simple_meta(), {"checkpoint": False})
+        assert "Checkpoint:" not in ann
+
+    def test_lora_off(self):
+        ann = generate_annotation(_simple_meta(), {"lora": False})
+        assert "LoRA:" not in ann
+
+    def test_seed_off(self):
+        ann = generate_annotation(_simple_meta(), {"seed": False})
+        assert "Seed:" not in ann
+
+    def test_cfg_off(self):
+        ann = generate_annotation(_simple_meta(), {"cfg": False})
+        assert "CFG:" not in ann
+
+    def test_positive_off(self):
+        ann = generate_annotation(_simple_meta(), {"positive": False})
+        assert "Positive:" not in ann
+
+    def test_negative_off(self):
+        ann = generate_annotation(_simple_meta(), {"negative": False})
+        assert "Negative:" not in ann
+
+    def test_sampler_off(self):
+        ann = generate_annotation(_simple_meta(), {"sampler": False})
+        assert "Sampler:" not in ann
+
+    def test_scheduler_off(self):
+        ann = generate_annotation(_simple_meta(), {"scheduler": False})
+        assert "Scheduler:" not in ann

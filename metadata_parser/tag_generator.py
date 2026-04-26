@@ -27,33 +27,59 @@ def _tokenize_prompt(text):
     return tags
 
 
-def generate_tags(meta):
+_DEFAULT_SETTINGS = {
+    "checkpoint": True,
+    "lora": True,
+    "positive": True,
+    "negative": True,
+    "seed": True,
+    "steps": True,
+    "cfg": True,
+    "sampler": True,
+    "scheduler": True,
+    "include_all_samplers": False,
+}
+
+
+def _setting(settings, key):
+    if settings is None:
+        return _DEFAULT_SETTINGS.get(key, True)
+    return settings.get(key, _DEFAULT_SETTINGS.get(key, True))
+
+
+def generate_tags(meta, settings=None):
     """
     Generate Eagle tags from extracted metadata.
-    Mirrors the JS TagGenerator.generate() logic with all options enabled.
+    Mirrors the JS TagGenerator.generate() logic.
+    settings: dict of boolean flags (keys: checkpoint, lora, positive, negative,
+              seed, steps, cfg, sampler, scheduler, include_all_samplers).
+              None means all enabled (default behaviour).
     Returns a list of tag strings.
     """
     tags = []
 
-    if meta.get("checkpoint"):
+    if _setting(settings, "checkpoint") and meta.get("checkpoint"):
         tags.append(_basename_no_ext(meta["checkpoint"]))
 
-    for lora in meta.get("loras") or []:
-        tags.append(_basename_no_ext(lora))
+    if _setting(settings, "lora"):
+        for lora in meta.get("loras") or []:
+            tags.append(_basename_no_ext(lora))
 
-    for token in _tokenize_prompt(meta.get("positive")):
-        tags.append(token)
+    if _setting(settings, "positive"):
+        for token in _tokenize_prompt(meta.get("positive")):
+            tags.append(token)
 
-    for token in _tokenize_prompt(meta.get("negative")):
-        tags.append(f"neg:{token}")
+    if _setting(settings, "negative"):
+        for token in _tokenize_prompt(meta.get("negative")):
+            tags.append(f"neg:{token}")
 
-    if meta.get("seed") is not None:
+    if _setting(settings, "seed") and meta.get("seed") is not None:
         tags.append(f"seed:{meta['seed']}")
-    if meta.get("steps") is not None:
+    if _setting(settings, "steps") and meta.get("steps") is not None:
         tags.append(f"steps:{meta['steps']}")
-    if meta.get("cfg") is not None:
+    if _setting(settings, "cfg") and meta.get("cfg") is not None:
         tags.append(f"cfg:{float(meta['cfg']):.2f}")
-    if meta.get("sampler"):
+    if _setting(settings, "sampler") and meta.get("sampler"):
         tags.append(f"sampler:{str(meta['sampler']).lower()}")
 
     return tags
