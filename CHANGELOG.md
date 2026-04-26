@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.2.0] - 2026-04-27
+
+### 🇬🇧 English
+#### 🎉 New Features
+- **Per-step checkpoint detection**: Each sampler step now independently resolves its connected checkpoint loader via graph traversal (BFS). When a workflow uses different models for different sampler steps, each step gets its own checkpoint name in tags and annotation.
+
+#### ✨ Improvements
+- **Annotation always shows Checkpoint per step**: The `Checkpoint:` line now appears inside every sampler step block regardless of whether the model is the same across steps, making the output consistent and unambiguous.
+
+#### 🐛 Bug Fixes
+- Fixed JPEG (and potentially WebP/PNG) ENOENT race condition: Eagle's `addFromPath` processes files asynchronously, so the file could be deleted before Eagle read it. Images are now saved directly to the ComfyUI temp directory and left there for Eagle to read, eliminating the race.
+
+### 🇯🇵 日本語
+#### 🎉 新機能
+- **ステップごとのチェックポイント検出**: 各サンプラーステップがグラフのBFSトラバーサルにより、自分に接続されたチェックポイントローダーを独立して解決するようになった。ステップごとに異なるモデルを使うワークフローで、タグとアノテーションにそれぞれのモデル名が反映される。
+
+#### ✨ 改善
+- **アノテーションで各ステップに Checkpoint を表示**: モデルが同一かどうかに関わらず、すべてのサンプラーステップブロックに `Checkpoint:` 行を表示するようになった。出力が一貫していてわかりやすい。
+
+#### 🐛 バグ修正
+- JPEG（および WebP・PNG も含む可能性がある）の ENOENT 競合状態を修正。Eagle の `addFromPath` は非同期でファイルを処理するため、Eagle が読み取る前にファイルが削除される場合があった。画像を ComfyUI の一時ディレクトリに直接保存し、そのまま残すことで競合を解消。
+
+---
+
 ## [1.1.0] - 2026-04-26
 
 ### 🇬🇧 English

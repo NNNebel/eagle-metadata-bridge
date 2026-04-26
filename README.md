@@ -12,8 +12,8 @@ A [ComfyUI](https://github.com/comfyanonymous/ComfyUI) custom node that saves ge
 
 ### Features
 
-- **Auto-tagging** — Reads the ComfyUI workflow graph and generates Eagle tags: checkpoint name, LoRA names, prompt tokens, seed, steps, CFG, sampler
-- **Auto-annotation** — Writes a structured generation info block to the Eagle annotation field; supports multi-sampler workflows (e.g. hires.fix, ADetailer)
+- **Auto-tagging** — Reads the ComfyUI workflow graph and generates Eagle tags: checkpoint name, LoRA names, prompt tokens, seed, steps, CFG, sampler. When a workflow uses different models for different sampler steps, each model is tagged independently.
+- **Auto-annotation** — Writes a structured generation info block to the Eagle annotation field; supports multi-sampler workflows (e.g. hires.fix, ADetailer). Each sampler step shows its own `Checkpoint:` line.
 - **PNG / WebP / JPEG** — Choose your output format; quality/compression settings hide automatically when not applicable
 - **Dynamic folder assignment** — Route images into Eagle folders using date and node-parameter placeholders (e.g. `Portraits/%date:yyyy-MM-dd%`)
 - **Local save** — Optionally save a copy to a local directory at the same time
@@ -192,8 +192,8 @@ ComfyUIで生成した画像を [Eagle](https://jp.eagle.cool/) に直接送信�
 
 ### 機能
 
-- **自動タグ付け** — ComfyUIのワークフローグラフを解析し、チェックポイント名・LoRA名・プロンプトトークン・Seed・Steps・CFG・サンプラーをEagleタグとして生成
-- **自動アノテーション** — 生成情報をEagleのメモ欄に構造化テキストで書き込み。マルチサンプラーワークフロー（hires.fix、ADetailer等）にも対応
+- **自動タグ付け** — ComfyUIのワークフローグラフを解析し、チェックポイント名・LoRA名・プロンプトトークン・Seed・Steps・CFG・サンプラーをEagleタグとして生成。ステップごとに異なるモデルを使うワークフローでは各モデルを独立してタグ付け
+- **自動アノテーション** — 生成情報をEagleのメモ欄に構造化テキストで書き込み。マルチサンプラーワークフロー（hires.fix、ADetailer等）にも対応。各サンプラーステップにそれぞれの `Checkpoint:` 行を表示
 - **PNG / WebP / JPEG** — 出力フォーマットを選択可能。不要な設定項目（品質・圧縮レベル）は非選択時に自動で非表示
 - **動的フォルダー振り分け** — 日付やノードパラメータのプレースホルダーを使ってEagleフォルダーに振り分け（例: `Portraits/%date:yyyy-MM-dd%`）。フォルダーが存在しない場合は自動作成
 - **ローカル保存** — Eagle送信と同時にローカルディレクトリにも保存可能
