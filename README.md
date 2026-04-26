@@ -97,8 +97,7 @@ Edit it to control which fields appear in Eagle tags and annotations. ComfyUI do
     "seed": true,
     "steps": true,
     "cfg": true,
-    "sampler": true,
-    "scheduler": true
+    "sampler": true
   },
   "annotation": {
     "checkpoint": true,
@@ -114,7 +113,8 @@ Edit it to control which fields appear in Eagle tags and annotations. ComfyUI do
 }
 ```
 
-Set any field to `false` to exclude it. Omitted fields default to `true`.
+Set any field to `false` to exclude it. Omitted fields default to `true`.  
+`scheduler` is available in `annotation` only — it is not output as a tag.
 
 If the file contains invalid JSON or unrecognised keys, an error is printed in the ComfyUI log and the affected section falls back to all-enabled.
 
@@ -229,8 +229,7 @@ Eagleに送るタグとアノテーションに含めるフィールドをここ
     "seed": true,
     "steps": true,
     "cfg": true,
-    "sampler": true,
-    "scheduler": true
+    "sampler": true
   },
   "annotation": {
     "checkpoint": true,
@@ -246,7 +245,8 @@ Eagleに送るタグとアノテーションに含めるフィールドをここ
 }
 ```
 
-`false` にしたフィールドはタグ・アノテーションから除外されます。省略したフィールドは `true` 扱いです。
+`false` にしたフィールドはタグ・アノテーションから除外されます。省略したフィールドは `true` 扱いです。  
+`scheduler` は `annotation` セクションのみ有効です（タグとしては出力されません）。
 
 JSONが不正な場合や不明なキーが含まれる場合は、ComfyUIのログにエラーが表示され、該当セクションは全フィールド有効にフォールバックします。
 

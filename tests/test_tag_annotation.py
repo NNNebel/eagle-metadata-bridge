@@ -241,6 +241,26 @@ class TestGenerateAnnotation:
         assert "Seed: 1" in ann
         assert "CFG: 5.0" in ann
 
+    def test_no_generation_steps_all_off_header_only(self):
+        """フォールバックブロックで全フィールド off → ヘッダーだけ残ること（空行なし）。"""
+        meta = {
+            "checkpoint": "model.safetensors",
+            "loras": [],
+            "generation_steps": [],
+            "seed": 1,
+            "steps": 10,
+            "cfg": 5.0,
+            "sampler": "euler",
+            "scheduler": "normal",
+            "positive": "test",
+            "negative": "bad",
+        }
+        all_off = {k: False for k in
+                   ["checkpoint", "lora", "positive", "negative",
+                    "seed", "steps", "cfg", "sampler", "scheduler"]}
+        ann = generate_annotation(meta, all_off)
+        assert ann == "[Generation Info]"
+
 
 # ---------------------------------------------------------------------------
 # Settings (customisation) tests

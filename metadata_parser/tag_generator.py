@@ -36,7 +36,8 @@ _DEFAULT_SETTINGS = {
     "steps": True,
     "cfg": True,
     "sampler": True,
-    "scheduler": True,
+    # Note: "scheduler" is intentionally absent — scheduler is not output as a tag
+    # (matches JS TagGenerator behaviour). It is valid in annotation settings only.
     "include_all_samplers": False,
 }
 

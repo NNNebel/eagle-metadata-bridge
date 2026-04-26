@@ -8,8 +8,7 @@
     "seed": true,
     "steps": true,
     "cfg": true,
-    "sampler": true,
-    "scheduler": true
+    "sampler": true
   },
   "annotation": {
     "checkpoint": true,

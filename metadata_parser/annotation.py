@@ -88,10 +88,10 @@ def generate_annotation(meta, settings=None):
                 lines.append(_step_label(step))
                 lines.extend(step_lines)
     else:
-        # Fallback: no generation_steps
-        lines.append("")
+        # Fallback: no generation_steps — build content first, emit only if non-empty
+        fallback_lines = []
         if _setting(settings, "seed") and meta.get("seed") is not None:
-            lines.append(f"Seed: {meta['seed']}")
+            fallback_lines.append(f"Seed: {meta['seed']}")
         params = []
         if _setting(settings, "steps") and meta.get("steps") is not None:
             params.append(f"Steps: {meta['steps']}")
@@ -102,10 +102,13 @@ def generate_annotation(meta, settings=None):
         if _setting(settings, "scheduler") and meta.get("scheduler"):
             params.append(f"Scheduler: {meta['scheduler']}")
         if params:
-            lines.append(" | ".join(params))
+            fallback_lines.append(" | ".join(params))
         if _setting(settings, "positive") and meta.get("positive"):
-            lines.append(f"Positive: {meta['positive']}")
+            fallback_lines.append(f"Positive: {meta['positive']}")
         if _setting(settings, "negative") and meta.get("negative"):
-            lines.append(f"Negative: {meta['negative']}")
+            fallback_lines.append(f"Negative: {meta['negative']}")
+        if fallback_lines:
+            lines.append("")
+            lines.extend(fallback_lines)
 
     return "\n".join(lines)

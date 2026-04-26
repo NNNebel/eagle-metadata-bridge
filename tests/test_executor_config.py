@@ -130,6 +130,14 @@ class TestShippedConfigJson:
         unknown = set(data["tag"].keys()) - set(_ALL_SETTING_KEYS)
         assert not unknown, f"tag セクションに未知のキー: {unknown}"
 
+    def test_tag_section_has_no_scheduler(self):
+        """scheduler はアノテーション専用。tag セクションに含まれないこと。"""
+        data = self._load()
+        if "tag" not in data:
+            pytest.skip("tag セクションなし")
+        assert "scheduler" not in data["tag"], \
+            "tag セクションに scheduler が含まれています（annotation 専用のフィールドです）"
+
     def test_annotation_section_keys_are_valid(self):
         data = self._load()
         if "annotation" not in data:
