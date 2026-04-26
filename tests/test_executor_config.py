@@ -1,7 +1,8 @@
 """
 test_executor_config.py
 
-Unit tests for _load_config() and _config_to_settings() in executor.py.
+Unit tests for _load_config() and _config_to_settings() in executor.py,
+and validation of the shipped config.json.
 """
 import json
 import os
@@ -65,3 +66,60 @@ class TestConfigToSettings:
         assert settings["negative"] is False
         assert settings["scheduler"] is False
         assert settings["checkpoint"] is True
+
+
+# ---------------------------------------------------------------------------
+# Shipped config.json validation
+# ---------------------------------------------------------------------------
+
+_CONFIG_PATH = os.path.join(os.path.dirname(__file__), "..", "config.json")
+_VALID_SECTIONS = {"tag", "annotation"}
+
+
+class TestShippedConfigJson:
+
+    def _load(self):
+        with open(_CONFIG_PATH, encoding="utf-8") as f:
+            return json.load(f)
+
+    def test_file_exists(self):
+        assert os.path.isfile(_CONFIG_PATH), "config.json が見つかりません"
+
+    def test_valid_json(self):
+        # json.load が例外を出さなければ OK（test_file_exists に依存）
+        data = self._load()
+        assert isinstance(data, dict)
+
+    def test_no_unknown_top_level_keys(self):
+        data = self._load()
+        allowed = _VALID_SECTIONS | {"eagle_port"}
+        unknown = set(data.keys()) - allowed
+        assert not unknown, f"未知のトップレベルキー: {unknown}"
+
+    def test_tag_section_keys_are_valid(self):
+        data = self._load()
+        if "tag" not in data:
+            pytest.skip("tag セクションなし")
+        unknown = set(data["tag"].keys()) - set(_ALL_SETTING_KEYS)
+        assert not unknown, f"tag セクションに未知のキー: {unknown}"
+
+    def test_annotation_section_keys_are_valid(self):
+        data = self._load()
+        if "annotation" not in data:
+            pytest.skip("annotation セクションなし")
+        unknown = set(data["annotation"].keys()) - set(_ALL_SETTING_KEYS)
+        assert not unknown, f"annotation セクションに未知のキー: {unknown}"
+
+    def test_tag_values_are_boolean(self):
+        data = self._load()
+        if "tag" not in data:
+            pytest.skip("tag セクションなし")
+        for k, v in data["tag"].items():
+            assert isinstance(v, bool), f"tag.{k} の値が bool でない: {v!r}"
+
+    def test_annotation_values_are_boolean(self):
+        data = self._load()
+        if "annotation" not in data:
+            pytest.skip("annotation セクションなし")
+        for k, v in data["annotation"].items():
+            assert isinstance(v, bool), f"annotation.{k} の値が bool でない: {v!r}"
