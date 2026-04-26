@@ -322,3 +322,20 @@ class TestAnnotationSettings:
     def test_scheduler_off(self):
         ann = generate_annotation(_simple_meta(), {"scheduler": False})
         assert "Scheduler:" not in ann
+
+    def test_all_off_no_step_label(self):
+        """全フィールド off のとき [Base Sampler - ...] ラベルも出ないこと。"""
+        all_off = {k: False for k in
+                   ["checkpoint", "lora", "positive", "negative",
+                    "seed", "steps", "cfg", "sampler", "scheduler"]}
+        ann = generate_annotation(_simple_meta(), all_off)
+        assert "[Base Sampler" not in ann
+        assert "KSampler" not in ann
+
+    def test_all_off_header_only(self):
+        """全フィールド off のとき [Generation Info] ヘッダーだけ残ること。"""
+        all_off = {k: False for k in
+                   ["checkpoint", "lora", "positive", "negative",
+                    "seed", "steps", "cfg", "sampler", "scheduler"]}
+        ann = generate_annotation(_simple_meta(), all_off)
+        assert ann == "[Generation Info]"

@@ -1,25 +1,25 @@
 {
   "eagle_port": 41595,
   "tag": {
-    "checkpoint": true,
-    "lora": true,
-    "positive": true,
-    "negative": true,
-    "seed": true,
-    "steps": true,
-    "cfg": true,
-    "sampler": true,
-    "scheduler": true
+    "checkpoint": false,
+    "lora": false,
+    "positive": false,
+    "negative": false,
+    "seed": false,
+    "steps": false,
+    "cfg": false,
+    "sampler": false,
+    "scheduler": false
   },
   "annotation": {
-    "checkpoint": true,
-    "lora": true,
-    "positive": true,
-    "negative": true,
-    "seed": true,
-    "steps": true,
-    "cfg": true,
-    "sampler": true,
-    "scheduler": true
+    "checkpoint": false,
+    "lora": false,
+    "positive": false,
+    "negative": false,
+    "seed": false,
+    "steps": false,
+    "cfg": false,
+    "sampler": false,
+    "scheduler": false
   }
 }

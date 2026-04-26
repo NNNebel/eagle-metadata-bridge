@@ -56,17 +56,17 @@ def generate_annotation(meta, settings=None):
 
     if steps:
         for i, step in enumerate(steps):
-            lines.append("")
-            lines.append(_step_label(step))
+            # Build step content first; only emit the label if something will appear
+            step_lines = []
 
             # Show checkpoint in step when: only one step, or step ckpt differs from global
             if _setting(settings, "checkpoint"):
                 step_ckpt = os.path.splitext(step["checkpoint"])[0] if step.get("checkpoint") else None
                 if step_ckpt and (single_step or step_ckpt != global_ckpt):
-                    lines.append(f"Checkpoint: {step_ckpt}")
+                    step_lines.append(f"Checkpoint: {step_ckpt}")
 
             if _setting(settings, "seed") and step.get("seed") is not None:
-                lines.append(f"Seed: {step['seed']}")
+                step_lines.append(f"Seed: {step['seed']}")
             params = []
             if _setting(settings, "steps") and step.get("steps") is not None:
                 params.append(f"Steps: {step['steps']}")
@@ -77,11 +77,16 @@ def generate_annotation(meta, settings=None):
             if _setting(settings, "scheduler") and step.get("scheduler"):
                 params.append(f"Scheduler: {step['scheduler']}")
             if params:
-                lines.append(" | ".join(params))
+                step_lines.append(" | ".join(params))
             if _setting(settings, "positive") and step.get("positive"):
-                lines.append(f"Positive: {step['positive']}")
+                step_lines.append(f"Positive: {step['positive']}")
             if _setting(settings, "negative") and step.get("negative"):
-                lines.append(f"Negative: {step['negative']}")
+                step_lines.append(f"Negative: {step['negative']}")
+
+            if step_lines:
+                lines.append("")
+                lines.append(_step_label(step))
+                lines.extend(step_lines)
     else:
         # Fallback: no generation_steps
         lines.append("")
