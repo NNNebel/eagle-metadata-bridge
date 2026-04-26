@@ -74,15 +74,49 @@ Connect your image tensor to `images` and queue the prompt. The node will:
 | `%date:hhmmss%` | `153012` |
 | `%NodeTitle.param%` | value of `param` input on a node titled `NodeTitle` |
 
-### Eagle port
+### Nodes
 
-If Eagle is running on a non-default port, edit `config.json`:
+| Node | Description |
+|------|-------------|
+| **Eagle Metadata Bridge** | Main node. Reads `config.json` for output settings; defaults to all fields enabled. |
+| **Eagle Metadata Bridge (Test)** | Has 18 individual ON/OFF toggles for every tag and annotation field. Ignores `config.json` — useful for trying settings before committing them to the file. |
+
+### config.json
+
+`config.json` lives next to the node files in `custom_nodes/eagle-metadata-bridge/`.  
+Edit it to control which fields appear in Eagle tags and annotations. ComfyUI does **not** need to be restarted — the file is read on every execution.
 
 ```json
 {
-  "eagle_port": 41595
+  "eagle_port": 41595,
+  "tag": {
+    "checkpoint": true,
+    "lora": true,
+    "positive": true,
+    "negative": true,
+    "seed": true,
+    "steps": true,
+    "cfg": true,
+    "sampler": true,
+    "scheduler": true
+  },
+  "annotation": {
+    "checkpoint": true,
+    "lora": true,
+    "positive": true,
+    "negative": true,
+    "seed": true,
+    "steps": true,
+    "cfg": true,
+    "sampler": true,
+    "scheduler": true
+  }
 }
 ```
+
+Set any field to `false` to exclude it. Omitted fields default to `true`.
+
+If the file contains invalid JSON or unrecognised keys, an error is printed in the ComfyUI log and the affected section falls back to all-enabled.
 
 ## Sample workflow
 
@@ -172,15 +206,49 @@ pip install -r requirements.txt
 | `%date:hhmmss%` | `153012` |
 | `%NodeTitle.param%` | `NodeTitle` というノードの `param` 入力値 |
 
-### Eagleポート設定
+### ノード一覧
 
-Eagle が非デフォルトポートで動作している場合は `config.json` を編集してください：
+| ノード | 説明 |
+|-------|------|
+| **Eagle Metadata Bridge** | メインノード。出力設定は `config.json` を参照。未設定の場合は全フィールドを出力。 |
+| **Eagle Metadata Bridge (Test)** | タグ・アノテーションの各フィールドを個別にON/OFFできるノード。`config.json` を無視するので、設定をファイルに書き込む前に動作を試すのに使う。 |
+
+### config.json
+
+`config.json` はノードファイルと同じ `custom_nodes/eagle-metadata-bridge/` フォルダーにあります。  
+Eagleに送るタグとアノテーションに含めるフィールドをここで制御します。変更はComfyUIの**再起動不要**で、実行のたびに読み込まれます。
 
 ```json
 {
-  "eagle_port": 41595
+  "eagle_port": 41595,
+  "tag": {
+    "checkpoint": true,
+    "lora": true,
+    "positive": true,
+    "negative": true,
+    "seed": true,
+    "steps": true,
+    "cfg": true,
+    "sampler": true,
+    "scheduler": true
+  },
+  "annotation": {
+    "checkpoint": true,
+    "lora": true,
+    "positive": true,
+    "negative": true,
+    "seed": true,
+    "steps": true,
+    "cfg": true,
+    "sampler": true,
+    "scheduler": true
+  }
 }
 ```
+
+`false` にしたフィールドはタグ・アノテーションから除外されます。省略したフィールドは `true` 扱いです。
+
+JSONが不正な場合や不明なキーが含まれる場合は、ComfyUIのログにエラーが表示され、該当セクションは全フィールド有効にフォールバックします。
 
 ## サンプルワークフロー
 
