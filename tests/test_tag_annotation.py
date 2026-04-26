@@ -149,6 +149,12 @@ class TestGenerateTags:
         tags = generate_tags(_simple_meta())
         assert not any(t.startswith("neg:") and "lora" in t for t in tags)
 
+    def test_seed_zero_produces_tag(self):
+        """seed=0 は 'seed:0' タグとして出力されること。"""
+        meta = _simple_meta({"seed": 0, "generation_steps": []})
+        tags = generate_tags(meta)
+        assert "seed:0" in tags
+
 
 # ---------------------------------------------------------------------------
 # generate_annotation
@@ -164,10 +170,16 @@ class TestGenerateAnnotation:
         ann = generate_annotation(_simple_meta())
         assert "Checkpoint: myModel_v10" in ann
 
-    def test_lora_line_always_present(self):
-        # Even with empty loras, LoRA line must appear
-        ann = generate_annotation(_simple_meta())
+    def test_lora_line_present_for_empty_list(self):
+        """loras=[] のとき 'LoRA: '（空）行が出力されること。"""
+        ann = generate_annotation(_simple_meta())  # _simple_meta has loras=[]
         assert "LoRA: " in ann
+
+    def test_lora_line_absent_when_loras_is_none(self):
+        """loras=None のとき LoRA 行は出力されないこと。"""
+        meta = _simple_meta({"loras": None})
+        ann = generate_annotation(meta)
+        assert "LoRA:" not in ann
 
     def test_lora_names_listed(self):
         meta = _simple_meta({"loras": ["styleA.safetensors", "styleB.safetensors"]})
@@ -227,6 +239,14 @@ class TestGenerateAnnotation:
     # ------------------------------------------------------------------
     # Boundary values
     # ------------------------------------------------------------------
+
+    def test_seed_zero_in_step(self):
+        """seed=0 は有効な値として出力されること。"""
+        meta = _simple_meta()
+        meta["generation_steps"][0]["seed"] = 0
+        meta["seed"] = 0
+        ann = generate_annotation(meta)
+        assert "Seed: 0" in ann
 
     def test_steps_zero_in_step(self):
         """steps=0 は有効な値として出力されること。"""
