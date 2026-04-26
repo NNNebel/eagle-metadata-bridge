@@ -122,10 +122,10 @@ If the file contains invalid JSON or unrecognised keys, an error is printed in t
 
 | Field | Tag added to Eagle |
 |-------|--------------------|
-| `checkpoint` | Model filename without extension, lowercase — e.g. `mymodel_v1` |
-| `lora` | LoRA filename without extension, lowercase — e.g. `mylora` |
-| `positive` | Each prompt token — e.g. `1girl`, `masterpiece` |
-| `negative` | Each prompt token with `neg:` prefix — e.g. `neg:worst quality` |
+| `checkpoint` | Model name — e.g. `mymodel_v1` |
+| `lora` | LoRA name — e.g. `mylora` |
+| `positive` | Words and phrases from the positive prompt — e.g. `1girl`, `masterpiece` |
+| `negative` | Words and phrases from the negative prompt, prefixed with `neg:` — e.g. `neg:worst quality` |
 | `seed` | `seed:12345` |
 | `steps` | `steps:20` |
 | `cfg` | `cfg:7.50` |
@@ -134,17 +134,19 @@ If the file contains invalid JSON or unrecognised keys, an error is printed in t
 
 #### Annotation fields
 
-| Field | Annotation content |
-|-------|--------------------|
-| `checkpoint` | `Checkpoint: myModel_v1` (global header + per-step when only one step) |
-| `lora` | `LoRA: myLora` (global header) |
-| `seed` | `Seed: 12345` (per step) |
-| `steps` | `Steps: 20` in the params line (per step) |
-| `cfg` | `CFG: 7.5` in the params line (per step) |
-| `sampler` | `Sampler: euler` in the params line (per step) |
-| `scheduler` | `Scheduler: simple` in the params line (per step) |
-| `positive` | `Positive: …` (per step) |
-| `negative` | `Negative: …` (per step) |
+`steps`, `cfg`, `sampler`, and `scheduler` appear together on one line: `Steps: 30 | CFG: 8.0 | Sampler: euler | Scheduler: simple`. Disabling all four removes that line entirely.
+
+| Field | Controls |
+|-------|----------|
+| `checkpoint` | `Checkpoint: …` line |
+| `lora` | `LoRA: …` line |
+| `seed` | `Seed: …` line |
+| `steps` | `Steps: …` value |
+| `cfg` | `CFG: …` value |
+| `sampler` | `Sampler: …` value |
+| `scheduler` | `Scheduler: …` value |
+| `positive` | `Positive: …` line |
+| `negative` | `Negative: …` line |
 
 #### Example: minimal tags only
 
@@ -300,10 +302,10 @@ JSONが不正な場合や不明なキーが含まれる場合は、ComfyUIのロ
 
 | フィールド | Eagleに付与されるタグ |
 |-----------|---------------------|
-| `checkpoint` | モデルのファイル名（拡張子・パスなし、小文字）— 例: `mymodel_v1` |
-| `lora` | LoRAのファイル名（拡張子・パスなし、小文字）— 例: `mylora` |
-| `positive` | プロンプトの各トークン — 例: `1girl`、`masterpiece` |
-| `negative` | プロンプトの各トークンに `neg:` プレフィックス付き — 例: `neg:worst quality` |
+| `checkpoint` | モデル名 — 例: `mymodel_v1` |
+| `lora` | LoRA名 — 例: `mylora` |
+| `positive` | ポジティブプロンプトの単語・フレーズ — 例: `1girl`、`masterpiece` |
+| `negative` | ネガティブプロンプトの単語・フレーズ（`neg:` 付き）— 例: `neg:worst quality` |
 | `seed` | `seed:12345` |
 | `steps` | `steps:20` |
 | `cfg` | `cfg:7.50` |
@@ -312,17 +314,19 @@ JSONが不正な場合や不明なキーが含まれる場合は、ComfyUIのロ
 
 #### annotation フィールドの詳細
 
-| フィールド | アノテーションへの影響 |
-|-----------|----------------------|
-| `checkpoint` | `Checkpoint: myModel_v1`（ヘッダー行 + 1ステップ時はステップ内にも） |
-| `lora` | `LoRA: myLora`（ヘッダー行） |
-| `seed` | `Seed: 12345`（各ステップ） |
-| `steps` | パラメーター行の `Steps: 20`（各ステップ） |
-| `cfg` | パラメーター行の `CFG: 7.5`（各ステップ） |
-| `sampler` | パラメーター行の `Sampler: euler`（各ステップ） |
-| `scheduler` | パラメーター行の `Scheduler: simple`（各ステップ） |
-| `positive` | `Positive: …`（各ステップ） |
-| `negative` | `Negative: …`（各ステップ） |
+`steps`・`cfg`・`sampler`・`scheduler` は `Steps: 30 | CFG: 8.0 | Sampler: euler | Scheduler: simple` のように1行にまとめて表示されます。4つすべてを `false` にするとその行ごと消えます。
+
+| フィールド | 制御対象 |
+|-----------|---------|
+| `checkpoint` | `Checkpoint: …` の行 |
+| `lora` | `LoRA: …` の行 |
+| `seed` | `Seed: …` の行 |
+| `steps` | `Steps: …` の値 |
+| `cfg` | `CFG: …` の値 |
+| `sampler` | `Sampler: …` の値 |
+| `scheduler` | `Scheduler: …` の値 |
+| `positive` | `Positive: …` の行 |
+| `negative` | `Negative: …` の行 |
 
 #### 設定例：最小限のタグのみ
 
