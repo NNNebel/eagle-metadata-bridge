@@ -27,11 +27,38 @@ class TestLoadConfig:
         monkeypatch.setattr(executor, "__file__", str(tmp_path / "executor.py"))
         assert _load_config() == config
 
-    def test_returns_empty_dict_on_invalid_json(self, monkeypatch, tmp_path):
+    def test_returns_empty_dict_on_invalid_json(self, monkeypatch, tmp_path, capsys):
         import executor
         (tmp_path / "config.json").write_text("NOT JSON", encoding="utf-8")
         monkeypatch.setattr(executor, "__file__", str(tmp_path / "executor.py"))
-        assert _load_config() == {}
+        result = _load_config()
+        assert result == {}
+        assert "ERROR" in capsys.readouterr().out
+
+    def test_warns_on_unknown_top_level_key(self, monkeypatch, tmp_path, capsys):
+        import executor
+        (tmp_path / "config.json").write_text('{"unknown_key": 1}', encoding="utf-8")
+        monkeypatch.setattr(executor, "__file__", str(tmp_path / "executor.py"))
+        _load_config()
+        assert "WARNING" in capsys.readouterr().out
+
+    def test_errors_on_non_bool_value(self, monkeypatch, tmp_path, capsys):
+        import executor
+        cfg = {"tag": {"seed": "yes"}}
+        (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+        monkeypatch.setattr(executor, "__file__", str(tmp_path / "executor.py"))
+        result = _load_config()
+        assert "ERROR" in capsys.readouterr().out
+        # 不正な値は true に補正されている
+        assert result["tag"]["seed"] is True
+
+    def test_warns_on_unknown_section_key(self, monkeypatch, tmp_path, capsys):
+        import executor
+        cfg = {"tag": {"seed": False, "unknown_field": True}}
+        (tmp_path / "config.json").write_text(json.dumps(cfg), encoding="utf-8")
+        monkeypatch.setattr(executor, "__file__", str(tmp_path / "executor.py"))
+        _load_config()
+        assert "WARNING" in capsys.readouterr().out
 
 
 class TestConfigToSettings:

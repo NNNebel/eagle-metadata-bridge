@@ -170,14 +170,49 @@ _ALL_SETTING_KEYS = [
 ]
 
 
+_VALID_SETTING_KEYS_SET = set(_ALL_SETTING_KEYS)
+_VALID_TOP_LEVEL_KEYS = {"eagle_port", "tag", "annotation"}
+
+
 def _load_config():
     """Load config.json from the node directory. Returns {} if missing or invalid."""
     path = os.path.join(os.path.dirname(__file__), "config.json")
     try:
         with open(path, encoding="utf-8") as f:
-            return json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
+            data = json.load(f)
+    except FileNotFoundError:
         return {}
+    except json.JSONDecodeError as e:
+        print(f"[EagleMetadataBridge] ERROR: config.json is not valid JSON: {e}")
+        return {}
+
+    if not isinstance(data, dict):
+        print("[EagleMetadataBridge] ERROR: config.json must be a JSON object.")
+        return {}
+
+    # Warn on unknown top-level keys
+    unknown_top = set(data.keys()) - _VALID_TOP_LEVEL_KEYS
+    if unknown_top:
+        print(f"[EagleMetadataBridge] WARNING: config.json has unknown keys: {unknown_top}")
+
+    # Validate tag / annotation sections
+    for section_name in ("tag", "annotation"):
+        section = data.get(section_name)
+        if section is None:
+            continue
+        if not isinstance(section, dict):
+            print(f"[EagleMetadataBridge] ERROR: config.json \"{section_name}\" must be an object. Ignored.")
+            data[section_name] = {}
+            continue
+        unknown_keys = set(section.keys()) - _VALID_SETTING_KEYS_SET
+        if unknown_keys:
+            print(f"[EagleMetadataBridge] WARNING: config.json \"{section_name}\" has unknown keys: {unknown_keys}")
+        for k, v in section.items():
+            if not isinstance(v, bool):
+                print(f"[EagleMetadataBridge] ERROR: config.json \"{section_name}.{k}\" must be true or false, got {v!r}. Treated as true.")
+                section[k] = True
+
+    return data
 
 
 def _config_to_settings(config, key):
