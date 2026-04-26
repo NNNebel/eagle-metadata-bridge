@@ -164,9 +164,72 @@ def _expand_path_expr(path_str, prompt, extra_pnginfo, now=None):
 # Main execute function
 # ---------------------------------------------------------------------------
 
+_ALL_SETTING_KEYS = [
+    "checkpoint", "lora", "positive", "negative",
+    "seed", "steps", "cfg", "sampler", "scheduler",
+]
+
+
+_VALID_SETTING_KEYS_SET = set(_ALL_SETTING_KEYS)
+_VALID_TOP_LEVEL_KEYS = {"eagle_port", "tag", "annotation"}
+
+
+def _load_config():
+    """Load config.json from the node directory. Returns {} if missing or invalid."""
+    path = os.path.join(os.path.dirname(__file__), "config.json")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except FileNotFoundError:
+        return {}
+    except json.JSONDecodeError as e:
+        print(f"[EagleMetadataBridge] ERROR: config.json is not valid JSON: {e}")
+        return {}
+
+    if not isinstance(data, dict):
+        print("[EagleMetadataBridge] ERROR: config.json must be a JSON object.")
+        return {}
+
+    # Warn on unknown top-level keys
+    unknown_top = set(data.keys()) - _VALID_TOP_LEVEL_KEYS
+    if unknown_top:
+        print(f"[EagleMetadataBridge] WARNING: config.json has unknown keys: {unknown_top}")
+
+    # Validate tag / annotation sections
+    for section_name in ("tag", "annotation"):
+        section = data.get(section_name)
+        if section is None:
+            continue
+        if not isinstance(section, dict):
+            print(f"[EagleMetadataBridge] ERROR: config.json \"{section_name}\" must be an object. Ignored.")
+            data[section_name] = {}
+            continue
+        unknown_keys = set(section.keys()) - _VALID_SETTING_KEYS_SET
+        if unknown_keys:
+            print(f"[EagleMetadataBridge] WARNING: config.json \"{section_name}\" has unknown keys: {unknown_keys}")
+        for k, v in section.items():
+            if not isinstance(v, bool):
+                print(f"[EagleMetadataBridge] ERROR: config.json \"{section_name}.{k}\" must be true or false, got {v!r}. Treated as true.")
+                section[k] = True
+
+    return data
+
+
+def _config_to_settings(config, key):
+    """
+    Convert a config section ("tag" or "annotation") to a settings dict.
+    Omitted keys default to True. Returns None (= all ON) if section is absent.
+    """
+    section = config.get(key)
+    if not section:
+        return None
+    return {k: bool(section.get(k, True)) for k in _ALL_SETTING_KEYS}
+
+
 def execute(images, filename_prefix, eagle_folder_path="",
             tags="", format="PNG", compress_level=4, quality=85,
             preview=True, local_save_path="",
+            _settings_override_tag=None, _settings_override_annotation=None,
             prompt=None, extra_pnginfo=None, unique_id=None):
 
     is_png = format == "PNG"
@@ -190,14 +253,18 @@ def execute(images, filename_prefix, eagle_folder_path="",
     )
 
     # Extract metadata from graph for auto-tagging
+    cfg_data = _load_config()
+    tag_settings = _settings_override_tag or _config_to_settings(cfg_data, "tag")
+    annotation_settings = _settings_override_annotation or _config_to_settings(cfg_data, "annotation")
+
     auto_meta = {}
     auto_tags = []
     auto_annotation = ""
     if prompt and unique_id:
         try:
             auto_meta = extract_metadata(prompt, unique_id)
-            auto_tags = generate_tags(auto_meta)
-            auto_annotation = generate_annotation(auto_meta)
+            auto_tags = generate_tags(auto_meta, tag_settings)
+            auto_annotation = generate_annotation(auto_meta, annotation_settings)
             print(f"[EagleMetadataBridge] Extracted metadata: checkpoint={auto_meta.get('checkpoint')}, "
                   f"loras={auto_meta.get('loras')}, seed={auto_meta.get('seed')}, "
                   f"steps={auto_meta.get('steps')}, cfg={auto_meta.get('cfg')}, "

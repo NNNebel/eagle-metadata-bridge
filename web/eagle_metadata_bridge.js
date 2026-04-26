@@ -1,6 +1,5 @@
 import { app } from "../../scripts/app.js";
 
-// Hide a widget (collapse height to 0, remove from layout)
 function hideWidget(node, widget) {
   if (widget.type === "hidden") return;
   widget._origType = widget.type;
@@ -8,20 +7,23 @@ function hideWidget(node, widget) {
   widget.type = "hidden";
   widget.computeSize = () => [0, -4]; // -4 cancels the default margin
   node.setSize([node.size[0], node.computeSize()[1]]);
+  node.graph?.change();
 }
 
-// Restore a hidden widget
 function showWidget(node, widget) {
   if (widget.type !== "hidden") return;
   widget.type = widget._origType;
   widget.computeSize = widget._origComputeSize;
   node.setSize([node.size[0], node.computeSize()[1]]);
+  node.graph?.change();
 }
+
+const TARGET_CLASSES = ["EagleMetadataBridge", "EagleMetadataBridgeTest"];
 
 app.registerExtension({
   name: "EagleMetadataBridge.ConditionalWidgets",
   async nodeCreated(node) {
-    if (node.comfyClass !== "EagleMetadataBridge") return;
+    if (!TARGET_CLASSES.includes(node.comfyClass)) return;
 
     const get = (name) => node.widgets?.find(w => w.name === name);
 
@@ -33,15 +35,29 @@ app.registerExtension({
 
     const update = () => {
       const fmt = formatWidget.value;
-      const isPng  = fmt === "PNG";
-      const isWebp = fmt === "WebP";
-      const isJpeg = fmt === "JPEG";
-
-      if (compressWidget) isPng  ? showWidget(node, compressWidget) : hideWidget(node, compressWidget);
-      if (qualityWidget)  (isWebp || isJpeg) ? showWidget(node, qualityWidget) : hideWidget(node, qualityWidget);
+      if (compressWidget) {
+        fmt === "PNG" ? showWidget(node, compressWidget) : hideWidget(node, compressWidget);
+      }
+      if (qualityWidget) {
+        (fmt === "WebP" || fmt === "JPEG") ? showWidget(node, qualityWidget) : hideWidget(node, qualityWidget);
+      }
     };
 
-    formatWidget.callback = (value) => { update(); };
-    update();
+    // Wrap existing callback instead of overwriting it
+    const origCallback = formatWidget.callback;
+    formatWidget.callback = function (value) {
+      if (origCallback) origCallback.apply(this, arguments);
+      update();
+    };
+
+    // Also apply when a saved workflow is loaded
+    const origOnConfigure = node.onConfigure?.bind(node);
+    node.onConfigure = function (info) {
+      if (origOnConfigure) origOnConfigure(info);
+      requestAnimationFrame(update);
+    };
+
+    // Apply initial state after widgets are fully initialised
+    requestAnimationFrame(update);
   },
 });

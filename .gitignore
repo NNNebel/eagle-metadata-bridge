@@ -9,6 +9,7 @@
 !requirements.txt
 !node_dictionary.json
 !node_list.json
+!config.json
 !web/
 !web/*.js
 
