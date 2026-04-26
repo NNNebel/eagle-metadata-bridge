@@ -106,7 +106,7 @@ class EagleMetadataBridgeTest:
         base = EagleMetadataBridge.INPUT_TYPES()
         optional = dict(base["optional"])
         optional.update({
-            # --- Tag output settings (scheduler is annotation-only; not listed here) ---
+            # --- Tag output settings ---
             "tag_checkpoint": ("BOOLEAN", {"default": True, "tooltip": "タグ: チェックポイント名を含める。"}),
             "tag_lora": ("BOOLEAN", {"default": True, "tooltip": "タグ: LoRA 名を含める。"}),
             "tag_positive": ("BOOLEAN", {"default": True, "tooltip": "タグ: ポジティブプロンプトのトークンを含める。"}),
@@ -115,6 +115,7 @@ class EagleMetadataBridgeTest:
             "tag_steps": ("BOOLEAN", {"default": True, "tooltip": "タグ: ステップ数を含める（steps:NN）。"}),
             "tag_cfg": ("BOOLEAN", {"default": True, "tooltip": "タグ: CFG スケールを含める（cfg:N.NN）。"}),
             "tag_sampler": ("BOOLEAN", {"default": True, "tooltip": "タグ: サンプラー名を含める（sampler:name）。"}),
+            "tag_scheduler": ("BOOLEAN", {"default": True, "tooltip": "タグ: スケジューラー名を含める（scheduler:name）。"}),
             # --- Annotation output settings ---
             "annotation_checkpoint": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: チェックポイント行を出力する。"}),
             "annotation_lora": ("BOOLEAN", {"default": True, "tooltip": "アノテーション: LoRA 行を出力する。"}),
@@ -133,7 +134,7 @@ class EagleMetadataBridgeTest:
         # BOOLEAN パラメータから settings dict を組み立て、config.json を上書き
         # scheduler はアノテーション専用（タグとしては出力されないため tag_keys には含めない）
         _tag_keys = ["checkpoint", "lora", "positive", "negative",
-                     "seed", "steps", "cfg", "sampler"]
+                     "seed", "steps", "cfg", "sampler", "scheduler"]
         _ann_keys = ["checkpoint", "lora", "positive", "negative",
                      "seed", "steps", "cfg", "sampler", "scheduler"]
         tag_settings = {k: kwargs.pop(f"tag_{k}", True) for k in _tag_keys}

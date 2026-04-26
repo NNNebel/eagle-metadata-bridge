@@ -36,8 +36,7 @@ _DEFAULT_SETTINGS = {
     "steps": True,
     "cfg": True,
     "sampler": True,
-    # Note: "scheduler" is intentionally absent — scheduler is not output as a tag
-    # (matches JS TagGenerator behaviour). It is valid in annotation settings only.
+    "scheduler": True,
     "include_all_samplers": False,
 }
 
@@ -82,5 +81,7 @@ def generate_tags(meta, settings=None):
         tags.append(f"cfg:{float(meta['cfg']):.2f}")
     if _setting(settings, "sampler") and meta.get("sampler"):
         tags.append(f"sampler:{str(meta['sampler']).lower()}")
+    if _setting(settings, "scheduler") and meta.get("scheduler"):
+        tags.append(f"scheduler:{str(meta['scheduler']).lower()}")
 
     return tags
