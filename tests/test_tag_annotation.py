@@ -359,3 +359,55 @@ class TestAnnotationSettings:
                     "seed", "steps", "cfg", "sampler", "scheduler"]}
         ann = generate_annotation(_simple_meta(), all_off)
         assert ann == "[Generation Info]"
+
+
+# ---------------------------------------------------------------------------
+# Settings coverage — each settings key must produce output when ON and
+# suppress it when OFF.  If a new key is added to _ALL_SETTING_KEYS but
+# tag_generator / annotation doesn't implement it, the ON test will fail.
+# ---------------------------------------------------------------------------
+
+_TAG_COVERAGE_CASES = [
+    # (key, meta_overrides, expected_tag_fragment)
+    # generate_tags reads top-level fields (not generation_steps), so overrides
+    # use top-level keys.  generation_steps is cleared to avoid noise from the
+    # base fixture's positive/negative/seed/etc.
+    ("checkpoint", {"checkpoint": "models/myModel.safetensors", "generation_steps": []},
+     "mymodel"),
+    ("lora",       {"loras": ["loras/myLora.safetensors"], "generation_steps": []},
+     "mylora"),
+    ("positive",   {"positive": "masterpiece", "generation_steps": []},
+     "masterpiece"),
+    ("negative",   {"negative": "bad quality", "generation_steps": []},
+     "neg:bad quality"),
+    ("seed",       {"seed": 99999, "generation_steps": []},
+     "seed:99999"),
+    ("steps",      {"steps": 77, "generation_steps": []},
+     "steps:77"),
+    ("cfg",        {"cfg": 3.5, "generation_steps": []},
+     "cfg:3.50"),
+    ("sampler",    {"sampler": "dpmpp_2m", "generation_steps": []},
+     "sampler:dpmpp_2m"),
+    ("scheduler",  {"scheduler": "karras", "generation_steps": []},
+     "scheduler:karras"),
+]
+
+
+class TestTagSettingsCoverage:
+    """Each settings key must produce the expected tag when ON and omit it when OFF."""
+
+    @pytest.mark.parametrize("key,meta_overrides,fragment", _TAG_COVERAGE_CASES,
+                              ids=[c[0] for c in _TAG_COVERAGE_CASES])
+    def test_on_produces_tag(self, key, meta_overrides, fragment):
+        meta = {**_simple_meta(), **meta_overrides}
+        tags = generate_tags(meta, {key: True})
+        assert any(fragment in t for t in tags), \
+            f"setting '{key}' ON: expected fragment '{fragment}' in tags, got {tags}"
+
+    @pytest.mark.parametrize("key,meta_overrides,fragment", _TAG_COVERAGE_CASES,
+                              ids=[c[0] for c in _TAG_COVERAGE_CASES])
+    def test_off_suppresses_tag(self, key, meta_overrides, fragment):
+        meta = {**_simple_meta(), **meta_overrides}
+        tags = generate_tags(meta, {key: False})
+        assert not any(fragment in t for t in tags), \
+            f"setting '{key}' OFF: unexpected fragment '{fragment}' found in tags {tags}"
