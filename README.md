@@ -118,6 +118,52 @@ Set any field to `false` to exclude it. Omitted fields default to `true`.
 
 If the file contains invalid JSON or unrecognised keys, an error is printed in the ComfyUI log and the affected section falls back to all-enabled.
 
+#### Tag fields
+
+| Field | Tag added to Eagle |
+|-------|--------------------|
+| `checkpoint` | Model filename without extension, lowercase — e.g. `mymodel_v1` |
+| `lora` | LoRA filename without extension, lowercase — e.g. `mylora` |
+| `positive` | Each prompt token — e.g. `1girl`, `masterpiece` |
+| `negative` | Each prompt token with `neg:` prefix — e.g. `neg:worst quality` |
+| `seed` | `seed:12345` |
+| `steps` | `steps:20` |
+| `cfg` | `cfg:7.50` |
+| `sampler` | `sampler:euler` |
+| `scheduler` | `scheduler:simple` |
+
+#### Annotation fields
+
+| Field | Annotation content |
+|-------|--------------------|
+| `checkpoint` | `Checkpoint: myModel_v1` (global header + per-step when only one step) |
+| `lora` | `LoRA: myLora` (global header) |
+| `seed` | `Seed: 12345` (per step) |
+| `steps` | `Steps: 20` in the params line (per step) |
+| `cfg` | `CFG: 7.5` in the params line (per step) |
+| `sampler` | `Sampler: euler` in the params line (per step) |
+| `scheduler` | `Scheduler: simple` in the params line (per step) |
+| `positive` | `Positive: …` (per step) |
+| `negative` | `Negative: …` (per step) |
+
+#### Example: minimal tags only
+
+```json
+{
+  "tag": {
+    "positive": false,
+    "negative": false,
+    "seed": false,
+    "cfg": false
+  },
+  "annotation": {
+    "negative": false
+  }
+}
+```
+
+Only `checkpoint`, `lora`, `steps`, `sampler`, and `scheduler` tags are generated. The annotation keeps all fields except `negative`.
+
 ## Sample workflow
 
 `examples/sample-workflow.webp` contains embedded workflow metadata.  
@@ -250,6 +296,52 @@ Eagleに送るタグとアノテーションに含めるフィールドをここ
 
 JSONが不正な場合や不明なキーが含まれる場合は、ComfyUIのログにエラーが表示され、該当セクションは全フィールド有効にフォールバックします。
 
+#### tag フィールドの詳細
+
+| フィールド | Eagleに付与されるタグ |
+|-----------|---------------------|
+| `checkpoint` | モデルのファイル名（拡張子・パスなし、小文字）— 例: `mymodel_v1` |
+| `lora` | LoRAのファイル名（拡張子・パスなし、小文字）— 例: `mylora` |
+| `positive` | プロンプトの各トークン — 例: `1girl`、`masterpiece` |
+| `negative` | プロンプトの各トークンに `neg:` プレフィックス付き — 例: `neg:worst quality` |
+| `seed` | `seed:12345` |
+| `steps` | `steps:20` |
+| `cfg` | `cfg:7.50` |
+| `sampler` | `sampler:euler` |
+| `scheduler` | `scheduler:simple` |
+
+#### annotation フィールドの詳細
+
+| フィールド | アノテーションへの影響 |
+|-----------|----------------------|
+| `checkpoint` | `Checkpoint: myModel_v1`（ヘッダー行 + 1ステップ時はステップ内にも） |
+| `lora` | `LoRA: myLora`（ヘッダー行） |
+| `seed` | `Seed: 12345`（各ステップ） |
+| `steps` | パラメーター行の `Steps: 20`（各ステップ） |
+| `cfg` | パラメーター行の `CFG: 7.5`（各ステップ） |
+| `sampler` | パラメーター行の `Sampler: euler`（各ステップ） |
+| `scheduler` | パラメーター行の `Scheduler: simple`（各ステップ） |
+| `positive` | `Positive: …`（各ステップ） |
+| `negative` | `Negative: …`（各ステップ） |
+
+#### 設定例：最小限のタグのみ
+
+```json
+{
+  "tag": {
+    "positive": false,
+    "negative": false,
+    "seed": false,
+    "cfg": false
+  },
+  "annotation": {
+    "negative": false
+  }
+}
+```
+
+`checkpoint`・`lora`・`steps`・`sampler`・`scheduler` のタグのみ生成されます。アノテーションは `negative` 以外のすべてのフィールドを出力します。
+
 ## サンプルワークフロー
 
 `examples/sample-workflow.webp` にワークフローメタデータが埋め込まれています。  
@@ -263,4 +355,3 @@ ComfyUIキャンバスにドラッグ&ドロップするとワークフローを
 ## ライセンス
 
 MIT — [LICENSE](LICENSE) を参照
-NSE) を参照
